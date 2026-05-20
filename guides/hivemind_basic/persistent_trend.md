@@ -42,6 +42,8 @@ curl -X GET "https://app.forecastos.com/api/v1/persistent_trends" \
       "id": 1689,
       "title": "ai, artificial, generative, ais",
       "last_seen_at": "2025-11-10T22:22:01.039Z",
+      "display_title": "Artificial Intelligence and Generative AI",
+      "description": "The rapid advancement and adoption of artificial intelligence, including generative AI, is reshaping industries and driving significant market activity.",
       "instance_first_seen": "2024-02-01T00:00:00.000Z",
       "instance_last_seen": "2025-11-10T00:00:00.000Z",
       "weighted_instance_count": 649
