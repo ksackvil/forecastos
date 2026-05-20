@@ -43,7 +43,9 @@ curl -X GET "https://app.forecastos.com/api/v1/trends" \
     {
       "id": 21141,
       "end_date": "2025-06-23T00:00:00.000Z",
-      "title": "debate, argument, arguments, debates",
+      "title": "ai, ais, artificial, intelligence",
+      "display_title": "Artificial Intelligence",
+      "description": "The rapid advancement and adoption of artificial intelligence, including generative AI, is reshaping industries and driving significant market activity.",
       "market_relevant": false,
       "trend_rank": 72,
       "topic_size_rank": 117,
