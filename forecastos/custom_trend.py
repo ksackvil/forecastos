@@ -34,6 +34,13 @@ class CustomTrend(Readable, FeatureEngineeringMixin):
 
         # Extract rolling sums and combine into one df
         df_columns = ['date', 'popularity_score']
+        
+        rolling_30_df = pd.DataFrame(
+            list(res_body.get('rolling_30d_popularity', {}).items()),
+            columns=df_columns
+        )
+        rolling_30_df['rolling_type'] = 'rolling_30d'
+
         rolling_90_df = pd.DataFrame(
             list(res_body.get('rolling_90d_popularity', {}).items()),
             columns=df_columns
@@ -45,4 +52,4 @@ class CustomTrend(Readable, FeatureEngineeringMixin):
             columns=df_columns
         )
         rolling_365_df['rolling_type'] = 'rolling_365d'
-        return pd.concat([rolling_90_df, rolling_365_df], ignore_index=True)
+        return pd.concat([rolling_30_df, rolling_90_df, rolling_365_df], ignore_index=True)
