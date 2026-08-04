@@ -1,3 +1,22 @@
+"""Extract trades from an IEX TOPS capture.
+
+A capture is a gzipped pcap of a whole trading day on the feed - quotes, system
+messages and trades interleaved, over 10 GB for a busy capture. Trades are
+a small fraction of it.
+
+The brute force approach is to read message by message: read each packet
+header, step through the messages inside, keep the trade reports. That spends
+almost all its time decoding messages it then discards (~15 min on a ~14 GB capture).
+
+This module instead treats the decompressed stream as bytes. Every trade report
+begins with the same three-byte signature, so it scans for that literal, copies
+only the matching records, and reinterprets the concatenated result as a numpy
+record array in a single pass (~60 sec on a ~10 GB capture).
+
+The tradeoff: packet headers are skipped, so IEX-TP `seq` is unavailable. The
+`trade_id` inside each message is monotonic, so it orders trades just as well.
+"""
+
 import gzip
 import re
 import time
@@ -40,41 +59,34 @@ SNIFF_MIN_HITS = 64      # enough to separate a real feed from stray false posit
 SESSION_SLACK_NS = 2 * 86_400 * 1_000_000_000
 
 
-def scan_trades(
-    path: str | Path,
-    date: str,
-    progress_every: int | None = None,
-) -> pd.DataFrame:
-    """Extract every trade in a capture.
+def scan_trades(path: Path, date: str, progress_every: int = 10) -> pd.DataFrame:
+    """Returns every trade in the capture at `path`, one row each.
 
-    ~12x faster than trades_by_walk (72s vs ~15 min on a 14 GB session), and
-    within ~1.5s of the cost of merely decompressing the file. Verified
-    byte-identical to the walk on TOPS 1.5 and 1.6 captures.
+    Runs in three steps: work out which trade signature this file uses,
+    extract every record that matches it, then reinterpret those bytes as trades.
 
-    Packet headers are skipped, so IEX-TP `seq` is unavailable — but `trade_id`
-    rides inside the message and is monotonic, so it orders trades just as well.
-
-    `session` is the trading day the capture covers; it only bounds the
-    timestamp plausibility check. It is passed in rather than parsed off the
-    filename so this parser does not depend on the downloader's naming.
+    `date` is the session the capture covers, and only bounds the timestamp
+    plausibility check in `_decode`.
     """
     raw = _carve(path, _sniff_sig(path), progress_every)
     return _decode(raw, *_session_bounds(date))
 
 
-def _sniff_sig(path) -> bytes:
-    r"""Pick the single signature this file uses.
+def _sniff_sig(path: Path) -> bytes:
+    r"""Decide which trade signatures this capture uses.
 
-    Matching both at once costs ~6x: the alternation `(?:\x26|\x2a)\x00T`
-    defeats CPython's literal-prefix optimization, so re runs a general match at
-    every byte instead of a memchr scan. One literal keeps the scan near the
-    decompression floor.
+    Worth a separate pass because scanning for both at once costs ~6x: the
+    alternation `(?:\x26|\x2a)\x00T` defeats CPython's literal-prefix
+    optimization, so `re` runs a general match at every byte rather than a
+    memchr scan. One literal keeps `_carve` near the decompression floor.
 
-    The losing signature scores exactly zero in practice, so this is a
-    measurement rather than a heuristic — and unlike trusting the catalog's
-    version column, a capture with no trades in it fails loudly here instead of
-    silently returning an empty frame. The probe grows only until one signature
-    clears SNIFF_MIN_HITS, which a normal session does in the first chunk.
+    Counting hits rather than trusting the catalog's version column also makes a
+    capture containing no trades fail here, loudly, instead of quietly producing
+    an empty frame. The losing signature scores zero in practice, so this is a
+    measurement, not a guess.
+
+    Only reads far enough for one signature to clear SNIFF_MIN_HITS, which a
+    normal session does within the first chunk.
     """
     probe = b''
     with gzip.open(path, 'rb') as f:
@@ -92,8 +104,12 @@ def _sniff_sig(path) -> bytes:
         f'no TOPS trade messages in first {scanned} of {path}')
 
 
-def _carve(path, sig: bytes, progress_every: int | None = None) -> bytes:
-    """Stream the capture and concatenate the body of every signature match."""
+def _carve(path: Path, sig: bytes, progress_every: int) -> bytes:
+    """Stream the capture and concatenate the body of every signature match.
+
+    Returns one flat bytestring of fixed-width records, ready for `np.frombuffer`
+    to reinterpret without copying again.
+    """
     pattern = re.compile(re.escape(sig))
     total = Path(path).stat().st_size
     blobs, carry = [], b''
@@ -109,6 +125,9 @@ def _carve(path, sig: bytes, progress_every: int | None = None) -> bytes:
             # a match starting inside the final SCAN_TAIL bytes may be truncated;
             # defer it to the next round, where `carry` presents it in full
             limit = len(buf) if last else max(0, len(buf) - SCAN_TAIL)
+
+            # skip the length prefix and take exactly TRADE_REC.itemsize bytes,
+            # so every record is the same width whatever the TOPS version
             records = [buf[o + LEN_PREFIX:o + REC_SPAN]
                        for o in (m.start() for m in pattern.finditer(buf))
                        if o < limit and o + REC_SPAN <= len(buf)]
@@ -127,7 +146,7 @@ def _carve(path, sig: bytes, progress_every: int | None = None) -> bytes:
 
 
 def _session_bounds(date: str) -> tuple[int, int]:
-    """Plausible timestamp window (ns) for `session`."""
+    """Plausible timestamp window, in ns since the epoch, for session `date`."""
     midnight = pd.Timestamp(date).normalize()
     if midnight.tz is not None:
         midnight = midnight.tz_convert(None)

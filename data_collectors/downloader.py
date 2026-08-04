@@ -8,21 +8,28 @@ CHUNK_BYTES = 1 << 20
 
 
 class FileDownloader:
-    """Download URLs into `data_dir`, skipping files already present.
+    """Download URLs into `data_dir`, reusing any file already there.
 
-    Bytes land in a sibling `.part` file that is renamed only once the transfer
-    completes, so an interrupted run never leaves a truncated file behind for the
-    next run to mistake for a finished download.
+    Args:
+        data_dir: directory downloads land in; created if it does not exist.
+        cleanup: whether `fetch` deletes the file once the caller is done with
+            it. A capture can be tens of GB, so re-fetching is expensive - pass
+            False unless the file is genuinely disposable.
     """
 
-    def __init__(self, data_dir: str | Path, cleanup: bool):
+    def __init__(self, data_dir: str, cleanup: bool):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.cleanup = cleanup
 
-    def download(self, url: str, filename: str | None = None) -> Path:
-        """Return the local path for `url`, downloading it only if missing."""
-        out_path = self.data_dir / (filename or url.split("/")[-1])
+    def download(self, url: str, filename: str) -> Path:
+        """Return the local path for `url`, downloading it only if missing.
+
+        Bytes land in a sibling `.part` file that is renamed only once the transfer
+        completes, so an interrupted run never leaves a truncated file behind for the
+        next run to mistake for a finished download.
+        """
+        out_path = self.data_dir / filename
 
         if out_path.exists():
             print(f"already downloaded: {out_path}")
@@ -32,39 +39,38 @@ class FileDownloader:
         print(f"downloading: {url}\nsaving to:   {out_path}")
 
         try:
-            with requests.get(url, stream=True, timeout=TIMEOUT_SEC) as response:
-                response.raise_for_status()
-                total = int(response.headers.get("content-length", 0))
-                done = 0
-
-                with open(part, "wb") as f:
-                    for chunk in response.iter_content(chunk_size=CHUNK_BYTES):
-                        f.write(chunk)
-                        done += len(chunk)
-                        if total:
-                            print(
-                                f"\r  {_fmt(done)} / {_fmt(total)}"
-                                f" ({done / total:4.0%})",
-                                end="",
-                            )
-
+            self._stream(url, part)
             part.replace(out_path)
         except BaseException:
-            # Also catches KeyboardInterrupt: a half-written capture is worse than
-            # no capture, since `out_path.exists()` would later skip re-downloading.
+            # Also catches KeyboardInterrupt: the `exists()` check above would
+            # read a half-written file as a finished download.
             part.unlink(missing_ok=True)
             raise
 
         print(f"\nsaved {out_path} ({_fmt(out_path.stat().st_size)})")
         return out_path
 
+    def _stream(self, url: str, path: Path) -> None:
+        """Write the response body to `path` a chunk at a time."""
+        with requests.get(url, stream=True, timeout=TIMEOUT_SEC) as response:
+            response.raise_for_status()
+            total = int(response.headers.get("content-length", 0))
+            done = 0
+
+            with open(path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=CHUNK_BYTES):
+                    f.write(chunk)
+                    done += len(chunk)
+
+                    # A capture can run to tens of GB, so show progress when the
+                    # server told us how much to expect.
+                    if total:
+                        print(f"\r  {_fmt(done)} / {_fmt(total)}"
+                              f" ({done / total:4.0%})", end="")
+
     @contextmanager
-    def fetch(
-        self,
-        url: str,
-        filename: str | None = None
-    ) -> Generator[Path, None, None]:
-        """Yield the local path for `url`, removing it afterwards if `cleanup`."""
+    def fetch(self, url: str, filename: str) -> Generator[Path, None, None]:
+        """Yield the local path for `url`, deleting it afterwards if `self.cleanup`."""
         path = self.download(url, filename)
         try:
             yield path
@@ -75,6 +81,7 @@ class FileDownloader:
 
 
 def _fmt(n: float) -> str:
+    """Bytes in the largest unit that keeps the number under 1024."""
     for unit in ("B", "KB", "MB", "GB"):
         if n < 1024:
             return f"{n:.1f} {unit}"
