@@ -26,36 +26,43 @@ class IEXPriceCollector:
         self.downloader = FileDownloader(data_dir, cleanup)
 
     def collect(self, start: str = None, end: str = None) -> pd.DataFrame:
-        """Bars for every session in [start, end]; either bound may be None.
+        """Daily OHLCV bars for every trading session in [start, end].
 
-        Raises ValueError if no session falls in the range, so a typo'd date
-        fails immediately rather than after a download.
+        Downloads one capture per session, so a wide range is a long job.
+        Capture sizes vary - `fetch_tops_catalog` reports `size_bytes` per
+        session, so check there before committing to a range. Download time
+        depends on your connection; scanning runs ~60s per 10 GB.
+
+        Args:
+            start: earliest session as an ISO date string, 'YYYY-MM-DD'. None
+                means no lower bound - the archive reaches back to 2016.
+            end: latest session, same format. None means no upper bound.
+                Both bounds are inclusive.
+
+        Returns:
+            One row per symbol per session: date, symbol, open, high, low,
+            close, volume. `date` carries the catalog's own 'YYYYMMDD' form.
+
+        Raises:
+            ValueError: no session falls in the range, so a typo'd date fails
+                immediately rather than after a download.
         """
         catalog = self.fetch_tops_catalog(start, end)
         if catalog.empty:
             raise ValueError(f'no TOPS sessions between {start} and {end}')
 
-        # One session at a time: a capture runs to tens of GB, but only the
-        # aggregated bars (a few hundred KB) survive each iteration.
-        bars = [self.daily_bars(entry) for entry in catalog.to_dict('records')]
-        return pd.concat(bars, ignore_index=True)
+        data = []
+        for entry in catalog.to_dict('records'):
+            with self.downloader.fetch(
+                entry['link'], _capture_filename(entry)
+            ) as path:
+                trades = scan_trades(path, entry['date'])
+                data.append(_to_daily_bars(trades, entry['date']))
 
-    def daily_bars(self, entry: dict) -> pd.DataFrame:
-        """Download one capture, parse its trades, reduce them to OHLCV bars.
-
-        `entry` is one catalog row as a dict - it carries the download link plus
-        the fields that name the local file.
-        """
-        with self.downloader.fetch(
-            entry['link'], _capture_filename(entry)
-        ) as path:
-            trades = scan_trades(path, entry['date'])
-
-        return _to_daily_bars(trades, entry['date'])
+        return pd.concat(data, ignore_index=True)
 
     @staticmethod
     def fetch_tops_catalog(start: str = None, end: str = None) -> pd.DataFrame:
-        """Returns available TOPS feeds from IEX between [start, end] (one file per trading day)"""
         resp = requests.get(HIST_URL, timeout=TIMEOUT_SEC)
         resp.raise_for_status()
 
