@@ -56,7 +56,7 @@ class IEXPriceCollector:
             with self.downloader.fetch(
                 entry['link'], _capture_filename(entry)
             ) as path:
-                trades = scan_trades(path, entry['date'])
+                trades = scan_trades(path, entry['version'], entry['date'])
                 data.append(_to_daily_bars(trades, entry['date']))
 
         return pd.concat(data, ignore_index=True)
@@ -108,21 +108,27 @@ def _capture_filename(entry: dict) -> str:
 def _to_daily_bars(trades: pd.DataFrame, date: str) -> pd.DataFrame:
     """Collapse one session's trades into a bar per symbol.
 
-    `first`/`last` are positional, so the sort is what makes open and close the
-    day's first and final prints rather than whichever row pandas saw first.
+    Prices and volume come from different sets of trades. Only price-eligible
+    trades may set open, high, low or close, while every trade counts toward
+    volume whatever its flags.
     """
-    trades = trades.sort_values(['symbol', 'ts', 'trade_id'])
+    # Volume first, over every trade, before any of it is filtered away.
+    volume = trades.groupby('symbol')['size'].sum().rename('volume')
+
+    # filter out price ineligible trades (extended hours / odd lot)
+    priced = trades[trades['price_eligible']].sort_values(
+        ['symbol', 'ts', 'trade_id'])
 
     bars = (
         # sort=False: already ordered by symbol, so skip re-sorting the groups
-        trades.groupby('symbol', sort=False)
+        priced.groupby('symbol', sort=False)
         .agg(
             open=('price', 'first'),
             high=('price', 'max'),
             low=('price', 'min'),
             close=('price', 'last'),
-            volume=('size', 'sum')
         )
+        .join(volume, how='inner')
         .reset_index()
     )
 

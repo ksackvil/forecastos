@@ -1,20 +1,16 @@
 """Extract trades from an IEX TOPS capture.
 
-A capture is a gzipped pcap of a whole trading day on the feed - quotes, system
-messages and trades interleaved, over 10 GB for a busy capture. Trades are
-a small fraction of it.
+A capture is a gzipped pcap of one trading day - quotes, system messages and
+trades interleaved, over 10 GB when busy - of which trades are a small part.
 
-The brute force approach is to read message by message: read each packet
-header, step through the messages inside, keep the trade reports. That spends
-almost all its time decoding messages it then discards (~15 min on a ~14 GB capture).
+Parsing message by message spends almost all its time decoding messages it then
+discards (~15 min on ~14 GB). This module instead treats the decompressed stream
+as bytes: every trade report opens with the same three-byte signature, so it
+scans for that literal, copies the matching records, and reinterprets them as a
+numpy record array in one pass (~60 sec on ~10 GB).
 
-This module instead treats the decompressed stream as bytes. Every trade report
-begins with the same three-byte signature, so it scans for that literal, copies
-only the matching records, and reinterprets the concatenated result as a numpy
-record array in a single pass (~60 sec on a ~10 GB capture).
-
-The tradeoff: packet headers are skipped, so IEX-TP `seq` is unavailable. The
-`trade_id` inside each message is monotonic, so it orders trades just as well.
+The tradeoff: packet headers are skipped, so IEX-TP `seq` is unavailable.
+`trade_id` is monotonic and orders trades just as well.
 """
 
 import gzip
@@ -25,17 +21,26 @@ import numpy as np
 import pandas as pd
 
 
-# --- TOPS wire format -------------------------------------------------------
+# --- TOPS specification consts --- #
+# Links to TOPS specification docs:
+#   current (1.6 as of 2026-08) => https://www.iex.io/documents/iex-tops-specification
+#   1.5 => https://www.iex.io/documents/tops-v1-5
+
+# A trade report is length-prefixed ("<length><type>"): 38 bytes on TOPS 1.6, 42
+# on 1.5, type 'T' in both. That pair is a far more selective scan target than
+# the bare 0x54, which occurs constantly inside prices, sizes and timestamps.
+TRADE_SIGNALS = {
+    '1.6': b'\x26\x00T',
+    '1.5': b'\x2a\x00T'
+}
+
 # Prices are fixed point with 4 implied decimals.
 PRICE_SCALE = 10_000
 
-# A trade message is length-prefixed, so "<length><type>" is a far more selective
-# signature than the bare type byte 0x54 — which occurs constantly inside prices,
-# sizes and timestamps. Trade Report is 38 bytes on TOPS 1.6, 42 on 1.5.
-TRADE_SIGS = (b'\x26\x00T', b'\x2a\x00T')
-
-# Only the first 38 bytes of each match are copied, so 1.5's four trailing bytes
-# fall away and both versions share this one dtype.
+# Only the first 38 bytes of a match are copied, so 1.5's four trailing bytes
+# fall away and both versions share this dtype. Verified against IEX-TP framing
+# on 2017-09-06, published in both formats: the 890,789 leading-38-byte records
+# are identical between the two, and 1.5's trailing bytes are zero in every one.
 TRADE_REC = np.dtype({
     'names':    ['flags', 'ts', 'sym', 'size', 'price', 'trade_id'],
     'formats':  ['u1', '<i8', 'S8', '<u4', '<i8', '<i8'],
@@ -43,65 +48,72 @@ TRADE_REC = np.dtype({
     'itemsize': 38,
 })
 
-LEN_PREFIX = 2                  # bytes of "<length>" ahead of the message body
+LEN_PREFIX = 2  # bytes of "<length>" ahead of the message body
 REC_SPAN = LEN_PREFIX + TRADE_REC.itemsize
+
+# The sale condition flags that bear on pricing: TOPS's trade eligibility
+# guidelines require both to be 0 for last-sale and for high/low eligibility.
+# Volume has no such rule - every trade counts toward it. See the
+# "Trade Eligibility Guidelines" section in the TOPS specification docs.
+PRICE_ELIGIBLE_SALE_CONDITION_FLAGS = {
+    'extended_hours': 0x40,
+    'odd_lot': 0x20,
+}
+
+# All above flags must be false (0) for trade to be price eligible
+PRICE_ELIGIBLE_MASK = sum(PRICE_ELIGIBLE_SALE_CONDITION_FLAGS.values())
 
 # --- scan tuning ------------------------------------------------------------
 SCAN_CHUNK = 8 << 20
 SCAN_TAIL = 64  # > longest trade message + prefix, so none is lost at a chunk edge
-
-SNIFF_STEP = 8 << 20     # grow the probe a chunk at a time...
-SNIFF_MAX = 64 << 20     # ...but give up rather than decompress the whole file
-SNIFF_MIN_HITS = 64      # enough to separate a real feed from stray false positives
 
 # Timestamps are wall-clock trade times, so they sit within a day of the session
 # date. Two days of slack absorbs timezone and pre/post-market spread.
 SESSION_SLACK_NS = 2 * 86_400 * 1_000_000_000
 
 
-def scan_trades(path: Path, date: str, progress_every: int = 10) -> pd.DataFrame:
-    """Returns every trade in the capture at `path`, one row each.
+def scan_trades(
+    path: Path,
+    tops_version: str,
+    date: str,
+    progress_every: int = 10
+) -> pd.DataFrame:
+    """Every trade in the capture at `path`, one row each.
 
-    Runs in three steps: work out which trade signature this file uses,
-    extract every record that matches it, then reinterpret those bytes as trades.
+    Looks up the trade signature for `tops_version`, carves every record that
+    matches it, then reinterprets those bytes as trades.
 
-    `date` is the session the capture covers, and only bounds the timestamp
-    plausibility check in `_decode`.
+    Args:
+        path: gzipped pcap capture covering a single session.
+        tops_version: version the capture was published under, spelled as the
+            catalog spells it - '1.6' or '1.5'. Selects the trade signature.
+        date: session the capture covers, 'YYYYMMDD'. Only bounds the timestamp
+            plausibility check that rejects false positives.
+        progress_every: print progress every N chunks; 0 to stay silent.
+
+    Returns:
+        One row per trade: symbol, ts (tz-aware UTC), size, price, trade_id, a
+        bool per PRICE_ELIGIBLE_SALE_CONDITION_FLAGS entry, and price_eligible.
+        Every trade is returned, odd lots and the 08:00-17:00 ET extended
+        session included, so filter on `price_eligible` for prices - never for
+        volume, which counts them all.
+
+    Raises:
+        ValueError: unknown `tops_version`. Field offsets and flag bits are
+            version-specific, so an unrecognized one is not safe to guess at.
     """
-    raw = _carve(path, _sniff_sig(path), progress_every)
+    raw = _carve(path, _get_trade_sig(tops_version), progress_every)
     return _decode(raw, *_session_bounds(date))
 
 
-def _sniff_sig(path: Path) -> bytes:
-    r"""Decide which trade signatures this capture uses.
-
-    Worth a separate pass because scanning for both at once costs ~6x: the
-    alternation `(?:\x26|\x2a)\x00T` defeats CPython's literal-prefix
-    optimization, so `re` runs a general match at every byte rather than a
-    memchr scan. One literal keeps `_carve` near the decompression floor.
-
-    Counting hits rather than trusting the catalog's version column also makes a
-    capture containing no trades fail here, loudly, instead of quietly producing
-    an empty frame. The losing signature scores zero in practice, so this is a
-    measurement, not a guess.
-
-    Only reads far enough for one signature to clear SNIFF_MIN_HITS, which a
-    normal session does within the first chunk.
-    """
-    probe = b''
-    with gzip.open(path, 'rb') as f:
-        while len(probe) < SNIFF_MAX:
-            chunk = f.read(SNIFF_STEP)
-            if not chunk:
-                break
-            probe += chunk
-            sig = max(TRADE_SIGS, key=probe.count)
-            if probe.count(sig) >= SNIFF_MIN_HITS:
-                return sig
-    scanned = (f'{len(probe) / 1e6:.0f} MB' if len(probe) >= 1e6
-               else f'{len(probe):,} bytes')
-    raise ValueError(
-        f'no TOPS trade messages in first {scanned} of {path}')
+def _get_trade_sig(tops_version: str) -> bytes:
+    try:
+        return TRADE_SIGNALS[tops_version]
+    except KeyError:
+        raise ValueError(
+            f'unsupported TOPS version {tops_version!r}; '
+            f'known: {", ".join(sorted(TRADE_SIGNALS))}'
+        ) from None
 
 
 def _carve(path: Path, sig: bytes, progress_every: int) -> bytes:
@@ -170,6 +182,9 @@ def _decode(raw: bytes, ts_lo: int, ts_hi: int) -> pd.DataFrame:
         'ts': pd.to_datetime(trades['ts'].astype('int64'), unit='ns', utc=True),
         'size': trades['size'].astype('int64'),
         'price': trades['price'] / PRICE_SCALE,
+        **{name: (trades['flags'] & bit) != 0
+           for name, bit in PRICE_ELIGIBLE_SALE_CONDITION_FLAGS.items()},
+        'price_eligible': (trades['flags'] & PRICE_ELIGIBLE_MASK) == 0,
         'trade_id': trades['trade_id'].astype('int64'),
     })
 
