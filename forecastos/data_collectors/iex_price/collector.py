@@ -17,9 +17,7 @@ class IEXPriceCollector:
     Args:
         data_dir: where capture files are downloaded. Defaults to ./data, resolved
             against the working directory as of import.
-        cleanup: delete each capture file once it has been parsed. Leave True for
-            one-off runs; pass False while iterating, since re-fetching a
-            session means another 10+ GB download.
+        cleanup: If True, delete each capture file once it has been parsed.
     """
 
     def __init__(self, data_dir: str = DEFAULT_DATA_DIR, cleanup: bool = True):
