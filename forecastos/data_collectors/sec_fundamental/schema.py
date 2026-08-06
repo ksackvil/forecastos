@@ -5,11 +5,10 @@ methods, and two methods appear in it. `raw` names a single XBRL tag.
 `sum_first_tag_found_per_sublist` names a list of tag groups and sums one value
 out of each. Both share a structure once it is spelled out:
 
-    datapoint  = first non-null of its alternatives
-    alternative = sum of its groups
-    group      = first non-null of its tags
+    datapoint   = first non-null of its alternatives
+    alternative = sum of its terms, each term the first tag the filing reported
 
-`raw` is the degenerate case - one group holding one tag - so compiling every
+`raw` is the degenerate case - one term holding one tag - so compiling every
 method into that shape lets the extractor evaluate any datapoint with the same
 code, over whole columns rather than a row at a time.
 
@@ -51,34 +50,25 @@ class Tag:
 
 
 @dataclass(frozen=True)
-class Group:
-    """Tags tried in order; the first one the filing reported wins."""
-
-    tags: tuple
-
-    @property
-    def tag_names(self) -> frozenset:
-        return frozenset(t.name for t in self.tags)
-
-
-@dataclass(frozen=True)
 class Alternative:
-    """Groups summed together to produce one candidate value.
+    """Terms summed together to produce one candidate value.
 
     Args:
-        groups: summed. A single group is the `raw` case.
-        allow_null_components: whether a group that matched nothing may be
+        terms: summed. Each term is a tuple of `Tag`s tried in order, the first
+            one the filing reported winning. A single term of a single tag is
+            the `raw` case.
+        allow_null_components: whether a term that matched nothing may be
             treated as zero. False means the whole alternative fails instead,
             which is what keeps a sum like `total_liabilities` from being
             reported when only one of its halves was found.
     """
 
-    groups: tuple
+    terms: tuple
     allow_null_components: bool = True
 
     @property
     def tag_names(self) -> frozenset:
-        return frozenset().union(*(g.tag_names for g in self.groups))
+        return frozenset(tag.name for term in self.terms for tag in term)
 
 
 @dataclass(frozen=True)
@@ -88,14 +78,10 @@ class Datapoint:
     Args:
         name: the output column name.
         alternatives: tried in order, first non-null wins.
-        is_calculation: whether this is a fallback that derives the value from
-            other datapoint columns. Calculations run after every mapping, and
-            only where the mapped value came back null.
     """
 
     name: str
     alternatives: tuple
-    is_calculation: bool = False
 
     @property
     def tag_names(self) -> frozenset:
@@ -128,9 +114,31 @@ class StatementSchema:
         return self.name in _PIT_STATEMENTS
 
     @property
+    def key_columns(self) -> list:
+        """What identifies a row, before anything derived is added.
+
+        `filed` is in here deliberately: the same period is reported again in
+        later filings, sometimes restated, and collapsing those would leave
+        only the newest version - the one that was not knowable at the time.
+
+        Point-in-time statements have no `start`; they are measured at `end`.
+        """
+        columns = ['cik', 'accn', 'fy', 'fp', 'form', 'start', 'end', 'filed']
+        if self.is_pit:
+            columns.remove('start')
+        return columns
+
+    @property
     def datapoint_names(self) -> list:
-        """Output columns, mappings first, in the order the JSON declared."""
-        return [dp.name for dp in self.mappings]
+        """Output columns, mappings first, in the order the JSON declared.
+
+        Calculations are almost always a fallback for a datapoint that is
+        mapped too, so this is nearly the mappings alone - but a
+        calculation-only datapoint is still an output column.
+        """
+        names = [dp.name for dp in self.mappings]
+        return names + [dp.name for dp in self.calculations
+                        if dp.name not in names]
 
     @property
     def required_tags(self) -> frozenset:
@@ -221,31 +229,36 @@ def _compile_datapoint(
     methods: list,
     is_calculation: bool = False,
 ) -> Datapoint:
+    """Compile one datapoint.
+
+    `is_calculation` only decides how tag names are read: a calculation names
+    other datapoint columns rather than XBRL tags, under the prefix the
+    previous implementation gave them.
+    """
     return Datapoint(
         name=name,
         alternatives=tuple(
             _compile_alternative(m, is_calculation) for m in methods),
-        is_calculation=is_calculation,
     )
 
 
 def _compile_alternative(method: dict, is_calculation: bool) -> Alternative:
-    """One method dict as a sum of groups.
+    """One method dict as a sum of terms.
 
-    `raw` carries its tag inline and becomes a single group of a single tag;
-    `sum_first_tag_found_per_sublist` carries `tag_li`, a list of groups whose
+    `raw` carries its tag inline and becomes a single term of a single tag;
+    `sum_first_tag_found_per_sublist` carries `tag_li`, a list of terms whose
     inner dicts are themselves `raw`.
     """
     if 'tag_li' in method:
-        groups = tuple(
-            Group(tags=tuple(_compile_tag(t, is_calculation) for t in group))
-            for group in method['tag_li']
+        terms = tuple(
+            tuple(_compile_tag(t, is_calculation) for t in term)
+            for term in method['tag_li']
         )
     else:
-        groups = (Group(tags=(_compile_tag(method, is_calculation),)),)
+        terms = ((_compile_tag(method, is_calculation),),)
 
     return Alternative(
-        groups=groups,
+        terms=terms,
         # Absent means permissive, matching how the previous implementation
         # read this flag.
         allow_null_components=method.get('allow_null_components', True),

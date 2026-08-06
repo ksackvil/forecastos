@@ -26,11 +26,6 @@ ADJACENCY_TOLERANCE = pd.Timedelta(days=30)
 # of 3 or 12. Reported periods are rarely exactly that long.
 PERIOD_TOLERANCE = 1.0
 
-# Columns identifying a row, kept alongside the datapoints.
-FLOW_KEYS = ['cik', 'accn', 'fy', 'fp', 'form',
-             'start', 'end', 'period', 'filed', 'frame']
-PIT_KEYS = ['cik', 'accn', 'fy', 'fp', 'form', 'end', 'filed', 'frame']
-
 # What makes a reported figure distinct, used to drop rows that a company
 # stubbed correctly and we then stubbed again.
 DEDUPE_KEYS = ['cik', 'fy', 'fp', 'form',
@@ -46,9 +41,8 @@ PIT_MERGE_KEYS = ['cik', 'fy', 'form', 'accn', 'end', 'filed']
 
 def normalize(wide: pd.DataFrame, statement) -> pd.DataFrame:
     """Reduce an extracted statement to keys and datapoints, then repair periods."""
-    keys = PIT_KEYS if statement.is_pit else FLOW_KEYS
-    names = [dp.name for dp in statement.mappings]
-    wide = wide[[c for c in keys + names if c in wide.columns]].copy()
+    keep = statement.key_columns + ['frame'] + statement.datapoint_names
+    wide = wide[[c for c in keep if c in wide.columns]].copy()
 
     if wide.empty:
         return wide
@@ -270,7 +264,7 @@ def _imply_q4(df: pd.DataFrame, statement) -> pd.DataFrame:
 
 def _to_start_end_columns(df: pd.DataFrame, statement) -> pd.DataFrame:
     """Rename instant values to the period's close and make room for its open."""
-    names = [dp.name for dp in statement.mappings if dp.name in df.columns]
+    names = _value_columns(df, statement)
     df = df.rename(columns={name: f'end_{name}' for name in names})
     for name in names:
         df[f'start_{name}'] = np.nan
@@ -283,8 +277,8 @@ def _imply_starting_values(df: pd.DataFrame, statement) -> pd.DataFrame:
     An annual row opens where the prior year closed; a quarterly row opens
     where the prior quarter did.
     """
-    names = [dp.name for dp in statement.mappings
-             if f'end_{dp.name}' in df.columns]
+    names = [name for name in statement.datapoint_names
+             if f'end_{name}' in df.columns]
     end_cols = [f'end_{name}' for name in names]
     if not end_cols:
         return df
@@ -385,7 +379,7 @@ def _flag_latest(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _value_columns(df: pd.DataFrame, statement) -> list:
-    return [dp.name for dp in statement.mappings if dp.name in df.columns]
+    return [name for name in statement.datapoint_names if name in df.columns]
 
 
 def _months_between(start: pd.Series, end: pd.Series) -> pd.Series:

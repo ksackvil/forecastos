@@ -1,6 +1,5 @@
 """Fundamental statements built from SEC's bulk XBRL companyfacts archive."""
 
-import json
 import os
 from pathlib import Path
 
@@ -8,10 +7,9 @@ import pandas as pd
 
 from ..downloader import FileDownloader
 from .extract import extract
-from .facts import pivot_statement, read_facts
+from .facts import read_facts
 from .normalize import merge_statements, normalize
 from .schema import Schema
-from .universe import TICKERS_FILENAME, TICKERS_URL, to_universe
 
 DEFAULT_DATA_DIR = str(Path.cwd() / 'data')
 
@@ -30,8 +28,8 @@ class SECFundamentalCollector:
     a label a company holds for a while - it moves between share classes, gets
     reused after a delisting, and SEC blanks it the moment a company is taken
     over - so joining fundamentals to it would quietly mis-key exactly the
-    companies that make a backtest honest. `collect_universe` maps CIKs to
-    tickers as of today, to be joined on when a symbol is needed.
+    companies that make a backtest honest. Symbols belong in a separate
+    mapping, joined on CIK and bounded by the dates the symbol was in use.
 
     Args:
         user_agent: sent to SEC, which rejects unidentified clients. They ask
@@ -54,12 +52,13 @@ class SECFundamentalCollector:
             data_dir, cleanup, self.sec_request_headers)
         self.schema = Schema.from_dir(SCHEMA_DIR)
 
-    def collect(
-        self,
-        ciks: list = None,
-        workers: int = 1,
-    ) -> pd.DataFrame:
+    def collect(self, ciks: list = None) -> pd.DataFrame:
         """Fundamental statements, one row per company per period per filing.
+
+        The whole archive takes a few minutes. To go wider, shard `ciks` across
+        separate jobs rather than reaching for threads or processes in here -
+        every stage shards cleanly by company, where parallelising the read
+        alone would only touch the smaller half of the work.
 
         Args:
             ciks: CIKs in any form that carries the digits - 320193,
@@ -68,9 +67,6 @@ class SECFundamentalCollector:
                 historical: companies that have since been acquired or delisted
                 are in here with their filing history intact, and no later run
                 can recover them once they have been left out.
-            workers: processes to parse the archive with. Each opens its own
-                handle, so they share nothing; parsing is the bulk of the load
-                and scales close to linearly.
 
         Returns:
             One row per company-period-filing: cik, accn, fy, fp, form, start,
@@ -91,14 +87,10 @@ class SECFundamentalCollector:
         Raises:
             ValueError: a named CIK has no member in the archive.
         """
-        statements = self.collect_statements(ciks=ciks, workers=workers)
+        statements = self.collect_statements(ciks=ciks)
         return merge_statements(statements)
 
-    def collect_statements(
-        self,
-        ciks: list = None,
-        workers: int = 1,
-    ) -> dict:
+    def collect_statements(self, ciks: list = None) -> dict:
         """The statements `collect` merges, before they are joined together.
 
         Useful when a statement is wanted on its own, or to see figures that
@@ -107,7 +99,6 @@ class SECFundamentalCollector:
 
         Args:
             ciks: as `collect`.
-            workers: as `collect`.
 
         Returns:
             Normalized frames keyed by statement name: income_statement,
@@ -115,38 +106,12 @@ class SECFundamentalCollector:
         """
         with self.downloader.fetch(COMPANY_FACTS_URL, ARCHIVE_FILENAME) as path:
             print('reading facts')
-            facts = read_facts(
-                path, self.schema.required_tags, ciks=ciks, workers=workers)
+            facts = read_facts(path, self.schema.required_tags, ciks=ciks)
 
         statements = {}
         for statement in self.schema:
             print(f'building {statement.name}')
-            wide = pivot_statement(facts, statement)
-            wide = extract(wide, statement)
-            statements[statement.name] = normalize(wide, statement)
+            statements[statement.name] = normalize(
+                extract(facts, statement), statement)
 
         return statements
-
-    def collect_universe(self, as_of: str = None) -> pd.DataFrame:
-        """Which CIK trades under which symbol, as of today.
-
-        SEC publishes this as current state, so a company that has delisted is
-        simply absent - collect it on every run and append, or the mapping only
-        ever describes today. `universe.merge_snapshot` folds snapshots into
-        validity ranges.
-
-        Args:
-            as_of: the date to stamp the snapshot with, as an ISO date string.
-                None uses today.
-
-        Returns:
-            One row per listing: cik, name, ticker, exchange, as_of. A company
-            with more than one share class has more than one row.
-        """
-        stamp = pd.Timestamp(as_of) if as_of else pd.Timestamp.today().normalize()
-
-        with self.downloader.fetch(TICKERS_URL, TICKERS_FILENAME) as path:
-            with open(path) as f:
-                payload = json.load(f)
-
-        return to_universe(payload, stamp)

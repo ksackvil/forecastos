@@ -1,4 +1,4 @@
-"""Reading the companyfacts archive, and reshaping it one statement at a time.
+"""Reading the companyfacts archive into one fact per row.
 
 The archive holds one JSON member per filer, each a nesting of
 taxonomy -> tag -> unit -> [facts]. Two filters run here rather than downstream,
@@ -17,7 +17,6 @@ compressed - there is no reason to spend 17 GB of disk unpacking the archive.
 
 import json
 import zipfile
-from concurrent.futures import ProcessPoolExecutor
 from typing import Optional
 
 import numpy as np
@@ -37,21 +36,11 @@ FACT_COLS = [
 
 DATE_COLS = ('start', 'end', 'filed')
 
-# What identifies a filing's reported figure for a period. `filed` is in here
-# deliberately: the same period is reported again in later filings, sometimes
-# restated, and collapsing those would leave only the newest version - the one
-# that was not knowable at the time.
-FLOW_INDEX = ['cik', 'accn', 'fy', 'fp', 'form', 'start', 'end', 'filed']
-
-# Point-in-time facts have no start; they are measured at `end`.
-PIT_INDEX = ['cik', 'accn', 'fy', 'fp', 'form', 'end', 'filed']
-
 
 def read_facts(
     archive_path,
     tags: frozenset,
     ciks: Optional[list] = None,
-    workers: int = 1,
 ) -> pd.DataFrame:
     """Every fact in the archive that `tags` names, as one long frame.
 
@@ -59,9 +48,7 @@ def read_facts(
         archive_path: path to companyfacts.zip.
         tags: XBRL tags to keep. Anything else is discarded before it becomes a
             row - this is the single largest reduction in the pipeline.
-        ciks: restrict to these filers. None reads all ~18k.
-        workers: processes to parse with. Each opens the archive itself, so
-            they share no state. 1 keeps it in-process.
+        ciks: restrict to these filers. None reads all ~19k.
 
     Returns:
         One row per fact: cik, tag, start, end, val, accn, fy, fp, form, filed,
@@ -71,15 +58,11 @@ def read_facts(
         names = ([_member_name(cik) for cik in ciks] if ciks
                  else [n for n in archive.namelist() if n.endswith('.json')])
 
-    if workers > 1:
-        frames = _read_parallel(archive_path, names, tags, workers)
-    else:
-        with zipfile.ZipFile(archive_path) as archive:
-            frames = []
-            for i, name in enumerate(names, 1):
-                frames.append(_read_member(archive, name, tags))
-                if i % 250 == 0 or i == len(names):
-                    print(f'\r  parsed {i} / {len(names)} companies', end='')
+        frames = []
+        for i, name in enumerate(names, 1):
+            frames.append(_read_member(archive, name, tags))
+            if i % 250 == 0 or i == len(names):
+                print(f'\r  parsed {i} / {len(names)} companies', end='')
     print()
 
     # Companies that reported none of the wanted tags contribute an empty
@@ -90,69 +73,6 @@ def read_facts(
         return _clean(pd.DataFrame(columns=FACT_COLS))
 
     return _clean(pd.concat(frames, ignore_index=True))
-
-
-def pivot_statement(facts: pd.DataFrame, statement) -> pd.DataFrame:
-    """One row per filing-period, one column per tag the statement reads.
-
-    Args:
-        facts: the long frame from `read_facts`.
-        statement: a `StatementSchema`.
-
-    Returns:
-        A frame indexed by the statement's key columns, plus one column per tag
-        and the `frame` label SEC assigned the period where it assigned one.
-    """
-    index_cols = PIT_INDEX if statement.is_pit else FLOW_INDEX
-
-    rows = facts[facts['tag'].isin(statement.required_tags)]
-    # A fact missing any part of its key cannot be placed on a timeline, and
-    # one missing its value has nothing to contribute.
-    rows = rows.dropna(subset=index_cols + ['tag', 'val'])
-    # The same tag can appear twice under one key when a filing reports it in
-    # more than one unit. First wins, as before.
-    rows = rows.drop_duplicates(subset=index_cols + ['tag'], keep='first')
-
-    if rows.empty:
-        return pd.DataFrame(columns=index_cols + ['frame'])
-
-    wide = rows.pivot(index=index_cols, columns='tag', values='val')
-    wide = wide.rename_axis(None, axis=1)
-
-    # `frame` belongs to the period rather than to any one tag, so it is
-    # collapsed alongside the pivot instead of becoming a column in it.
-    labels = rows.groupby(index_cols, sort=False)['frame'].first()
-    wide = wide.join(labels)
-
-    return wide.reset_index()
-
-
-def _read_parallel(archive_path, names, tags, workers):
-    """Parse members across processes, each with its own handle on the archive.
-
-    Parsing is the bulk of the load and every member is independent, so this
-    scales close to linearly until the concat at the end.
-    """
-    chunks = [names[i::workers] for i in range(workers)]
-    frames = []
-    with ProcessPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(_read_chunk, str(archive_path), chunk, tags)
-                   for chunk in chunks]
-        for i, future in enumerate(futures, 1):
-            frames.append(future.result())
-            print(f'\r  parsed {i} / {len(futures)} chunks', end='')
-    return frames
-
-
-def _read_chunk(archive_path: str, names: list, tags: frozenset) -> pd.DataFrame:
-    """Parse a slice of members. Runs in a worker process."""
-    with zipfile.ZipFile(archive_path) as archive:
-        frames = [_read_member(archive, name, tags) for name in names]
-
-    frames = [f for f in frames if not f.empty]
-    if not frames:
-        return pd.DataFrame(columns=FACT_COLS)
-    return pd.concat(frames, ignore_index=True)
 
 
 def _read_member(

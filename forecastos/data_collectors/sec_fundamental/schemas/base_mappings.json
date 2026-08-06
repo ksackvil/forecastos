@@ -1,852 +1,852 @@
 {
-    "income_statement": {
-        "revenue": [
+  "income_statement": {
+    "revenue": [
+      {
+        "tag": "Revenues",
+        "method": "raw",
+        "ignore_if_zero": true
+      },
+      {
+        "tag": "RevenuesNetOfInterestExpense",
+        "method": "raw"
+      },
+      {
+        "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "method": "raw"
+      },
+      {
+        "tag": "SalesRevenueNet",
+        "method": "raw"
+      },
+      {
+        "tag_li": [
+          [
             {
-                "tag": "Revenues",
-                "method": "raw",
-                "ignore_if_zero": true
-            },
-            {
-                "tag": "RevenuesNetOfInterestExpense",
-                "method": "raw"
-            },
-            {
-                "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
-                "method": "raw"
-            },
-            {
-                "tag": "SalesRevenueNet",
-                "method": "raw"
-            },
-            {
-                "tag_li": [
-                    [
-                        {
-                            "tag": "SalesRevenueGoodsNet",
-                            "method": "raw"
-                        }
-                    ],
-                    [
-                        {
-                            "tag": "SalesRevenueServicesNet",
-                            "method": "raw"
-                        }
-                    ]
-                ],
-                "method": "sum_first_tag_found_per_sublist"
-            },
-            {
-                "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
-                "method": "raw"
-            },
-            {
-                "tag": "RealEstateRevenueNet",
-                "method": "raw"
-            },
-            {
-                "tag_li": [
-                    [
-                        {
-                            "tag": "NoninterestIncome",
-                            "method": "raw"
-                        }
-                    ],
-                    [
-                        {
-                            "tag": "InterestAndDividendIncomeOperating",
-                            "method": "raw"
-                        }
-                    ]
-                ],
-                "method": "sum_first_tag_found_per_sublist"
-            },
-            {
-                "tag": "OilAndGasRevenue",
-                "method": "raw"
-            },
-            {
-                "tag": "GrossInvestmentIncomeOperating",
-                "method": "raw"
-            },
-            {
-                "tag": "RevenueMineralSales",
-                "method": "raw"
-            },
-            {
-                "tag": "SegmentReportingInformationRevenueFromExternalCustomers",
-                "method": "raw"
+              "tag": "SalesRevenueGoodsNet",
+              "method": "raw"
             }
+          ],
+          [
+            {
+              "tag": "SalesRevenueServicesNet",
+              "method": "raw"
+            }
+          ]
         ],
-        "cogs": [
+        "method": "sum_first_tag_found_per_sublist"
+      },
+      {
+        "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+        "method": "raw"
+      },
+      {
+        "tag": "RealEstateRevenueNet",
+        "method": "raw"
+      },
+      {
+        "tag_li": [
+          [
             {
-                "tag": "CostOfGoodsAndServicesSold",
-                "method": "raw"
-            },
-            {
-                "tag": "CostOfGoodsSold",
-                "method": "raw"
-            },
-            {
-                "tag": "CostOfRevenue",
-                "method": "raw"
-            },
-            {
-                "tag": "CostOfPurchasedOilAndGas",
-                "method": "raw"
+              "tag": "NoninterestIncome",
+              "method": "raw"
             }
+          ],
+          [
+            {
+              "tag": "InterestAndDividendIncomeOperating",
+              "method": "raw"
+            }
+          ]
         ],
-        "gross_revenue": [],
-        "sg_and_a": [
+        "method": "sum_first_tag_found_per_sublist"
+      },
+      {
+        "tag": "OilAndGasRevenue",
+        "method": "raw"
+      },
+      {
+        "tag": "GrossInvestmentIncomeOperating",
+        "method": "raw"
+      },
+      {
+        "tag": "RevenueMineralSales",
+        "method": "raw"
+      },
+      {
+        "tag": "SegmentReportingInformationRevenueFromExternalCustomers",
+        "method": "raw"
+      }
+    ],
+    "cogs": [
+      {
+        "tag": "CostOfGoodsAndServicesSold",
+        "method": "raw"
+      },
+      {
+        "tag": "CostOfGoodsSold",
+        "method": "raw"
+      },
+      {
+        "tag": "CostOfRevenue",
+        "method": "raw"
+      },
+      {
+        "tag": "CostOfPurchasedOilAndGas",
+        "method": "raw"
+      }
+    ],
+    "gross_revenue": [],
+    "sg_and_a": [
+      {
+        "tag": "SellingGeneralAndAdministrativeExpense",
+        "method": "raw"
+      },
+      {
+        "tag_li": [
+          [
             {
-                "tag": "SellingGeneralAndAdministrativeExpense",
-                "method": "raw"
+              "tag": "GeneralAndAdministrativeExpense",
+              "method": "raw"
+            }
+          ],
+          [
+            {
+              "tag": "MarketingExpense",
+              "method": "raw"
             },
             {
-                "tag_li": [
-                    [
-                        {
-                            "tag": "GeneralAndAdministrativeExpense",
-                            "method": "raw"
-                        }
-                    ],
-                    [
-                        {
-                            "tag": "MarketingExpense",
-                            "method": "raw"
-                        },
-                        {
-                            "tag": "SellingAndMarketingExpense",
-                            "method": "raw"
-                        },
-                        {
-                            "tag": "MarketingAndAdvertisingExpense",
-                            "method": "raw"
-                        }
-                    ]
-                ],
-                "method": "sum_first_tag_found_per_sublist"
+              "tag": "SellingAndMarketingExpense",
+              "method": "raw"
+            },
+            {
+              "tag": "MarketingAndAdvertisingExpense",
+              "method": "raw"
             }
+          ]
         ],
-        "r_and_d": [
+        "method": "sum_first_tag_found_per_sublist"
+      }
+    ],
+    "r_and_d": [
+      {
+        "tag": "ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost",
+        "method": "raw"
+      },
+      {
+        "tag": "ResearchAndDevelopmentExpense",
+        "method": "raw"
+      },
+      {
+        "tag": "ResearchAndDevelopmentExpenseSoftwareExcludingAcquiredInProcessCost",
+        "method": "raw"
+      },
+      {
+        "tag": "ResearchAndDevelopmentAssetAcquiredOtherThanThroughBusinessCombinationWrittenOff",
+        "method": "raw"
+      }
+    ],
+    "operating_expenses": [
+      {
+        "tag": "OperatingExpenses",
+        "method": "raw"
+      },
+      {
+        "tag": "NoninterestExpense",
+        "method": "raw"
+      },
+      {
+        "tag": "CostsAndExpenses",
+        "method": "raw"
+      },
+      {
+        "tag": "BenefitsLossesAndExpenses",
+        "method": "raw"
+      }
+    ],
+    "operating_income_or_ebit": [
+      {
+        "tag": "OperatingIncomeLoss",
+        "method": "raw"
+      },
+      {
+        "tag": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+        "method": "raw"
+      },
+      {
+        "tag": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+        "method": "raw"
+      }
+    ],
+    "net_interest_expense": [
+      {
+        "tag": "InterestIncomeExpenseNet",
+        "method": "raw",
+        "multiplier": -1
+      },
+      {
+        "tag_li": [
+          [
             {
-                "tag": "ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost",
-                "method": "raw"
-            },
-            {
-                "tag": "ResearchAndDevelopmentExpense",
-                "method": "raw"
-            },
-            {
-                "tag": "ResearchAndDevelopmentExpenseSoftwareExcludingAcquiredInProcessCost",
-                "method": "raw"
-            },
-            {
-                "tag": "ResearchAndDevelopmentAssetAcquiredOtherThanThroughBusinessCombinationWrittenOff",
-                "method": "raw"
+              "tag": "InterestExpense",
+              "method": "raw"
             }
+          ],
+          [
+            {
+              "tag": "InvestmentIncomeInterest",
+              "method": "raw",
+              "multiplier": -1
+            },
+            {
+              "tag": "InvestmentIncomeInterestAndDividend",
+              "method": "raw",
+              "multiplier": -1
+            },
+            {
+              "tag": "InvestmentIncomeNet",
+              "method": "raw",
+              "multiplier": -1
+            },
+            {
+              "tag": "InterestIncomeOther",
+              "method": "raw",
+              "multiplier": -1
+            },
+            {
+              "tag": "InterestAndOtherIncome",
+              "method": "raw",
+              "multiplier": -1
+            }
+          ]
         ],
-        "operating_expenses": [
+        "method": "sum_first_tag_found_per_sublist",
+        "allow_null_components": false
+      }
+    ],
+    "other_expense": [
+      {
+        "tag": "OtherNonoperatingIncomeExpenseOther",
+        "method": "raw",
+        "multiplier": -1
+      },
+      {
+        "tag": "NoninterestIncomeOtherOperatingIncome",
+        "method": "raw",
+        "multiplier": -1
+      },
+      {
+        "tag": "OtherNonoperatingExpense",
+        "method": "raw"
+      },
+      {
+        "tag": "OtherNonoperatingIncomeExpense",
+        "method": "raw",
+        "multiplier": -1
+      },
+      {
+        "tag": "OtherNoninterestExpense",
+        "method": "raw"
+      }
+    ],
+    "tax_expense": [
+      {
+        "tag": "IncomeTaxExpenseBenefit",
+        "method": "raw"
+      }
+    ],
+    "net_income": [
+      {
+        "tag": "IncomeLossFromContinuingOperations",
+        "method": "raw"
+      },
+      {
+        "tag": "ProfitLoss",
+        "method": "raw"
+      },
+      {
+        "tag": "NetIncomeLoss",
+        "method": "raw"
+      }
+    ],
+    "shares_out_avg": [
+      {
+        "tag": "WeightedAverageNumberOfSharesOutstandingBasic",
+        "method": "raw"
+      }
+    ],
+    "shares_out_avg_diluted": [
+      {
+        "tag": "WeightedAverageNumberOfDilutedSharesOutstanding",
+        "method": "raw"
+      }
+    ]
+  },
+  "cashflow_statement": {
+    "d_and_a_cf": [
+      {
+        "tag": "OtherDepreciationAndAmortization",
+        "method": "raw"
+      },
+      {
+        "tag": "DepreciationAndAmortization",
+        "method": "raw"
+      },
+      {
+        "tag": "DepreciationDepletionAndAmortization",
+        "method": "raw"
+      },
+      {
+        "tag": "DepreciationAmortizationAndAccretionNet",
+        "method": "raw"
+      },
+      {
+        "tag_li": [
+          [
             {
-                "tag": "OperatingExpenses",
-                "method": "raw"
-            },
-            {
-                "tag": "NoninterestExpense",
-                "method": "raw"
-            },
-            {
-                "tag": "CostsAndExpenses",
-                "method": "raw"
-            },
-            {
-                "tag": "BenefitsLossesAndExpenses",
-                "method": "raw"
+              "tag": "Depreciation",
+              "method": "raw"
             }
+          ],
+          [
+            {
+              "tag": "AdjustmentForAmortization",
+              "method": "raw"
+            },
+            {
+              "tag": "AmortizationOfIntangibleAssets",
+              "method": "raw"
+            }
+          ]
         ],
-        "operating_income_or_ebit": [
+        "method": "sum_first_tag_found_per_sublist"
+      }
+    ],
+    "operating_cf": [
+      {
+        "tag": "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations",
+        "method": "raw"
+      },
+      {
+        "tag": "NetCashProvidedByUsedInOperatingActivities",
+        "method": "raw"
+      }
+    ],
+    "pp_and_e_cf": [
+      {
+        "tag_li": [
+          [
             {
-                "tag": "OperatingIncomeLoss",
-                "method": "raw"
+              "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
+              "method": "raw",
+              "multiplier": -1
             },
             {
-                "tag": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
-                "method": "raw"
+              "tag": "PaymentsToAcquireOtherPropertyPlantAndEquipment",
+              "method": "raw",
+              "multiplier": -1
             },
             {
-                "tag": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
-                "method": "raw"
+              "tag": "PaymentsToAcquireProductiveAssets",
+              "method": "raw",
+              "multiplier": -1
             }
+          ],
+          [
+            {
+              "tag": "ProceedsFromSaleOfPropertyPlantAndEquipment",
+              "method": "raw"
+            },
+            {
+              "tag": "ProceedsFromSaleOfProductiveAssets",
+              "method": "raw"
+            }
+          ]
         ],
-        "net_interest_expense": [
+        "method": "sum_first_tag_found_per_sublist"
+      }
+    ],
+    "investing_cf": [
+      {
+        "tag": "NetCashProvidedByUsedInInvestingActivitiesContinuingOperations",
+        "method": "raw"
+      },
+      {
+        "tag": "NetCashProvidedByUsedInInvestingActivities",
+        "method": "raw"
+      }
+    ],
+    "dividend_cf": [
+      {
+        "tag": "PaymentsOfDividends",
+        "method": "raw",
+        "multiplier": -1
+      },
+      {
+        "tag_li": [
+          [
             {
-                "tag": "InterestIncomeExpenseNet",
-                "method": "raw",
-                "multiplier": -1
-            },
-            {
-                "tag_li": [
-                    [
-                        {
-                            "tag": "InterestExpense",
-                            "method": "raw"
-                        }
-                    ],
-                    [
-                        {
-                            "tag": "InvestmentIncomeInterest",
-                            "method": "raw",
-                            "multiplier": -1
-                        },
-                        {
-                            "tag": "InvestmentIncomeInterestAndDividend",
-                            "method": "raw",
-                            "multiplier": -1
-                        },
-                        {
-                            "tag": "InvestmentIncomeNet",
-                            "method": "raw",
-                            "multiplier": -1
-                        },
-                        {
-                            "tag": "InterestIncomeOther",
-                            "method": "raw",
-                            "multiplier": -1
-                        },
-                        {
-                            "tag": "InterestAndOtherIncome",
-                            "method": "raw",
-                            "multiplier": -1
-                        }
-                    ]
-                ],
-                "method": "sum_first_tag_found_per_sublist",
-                "allow_null_components": false
+              "tag": "PaymentsOfDividendsCommonStock",
+              "method": "raw",
+              "multiplier": -1
             }
+          ],
+          [
+            {
+              "tag": "PaymentsOfDividendsPreferredStockAndPreferenceStock",
+              "method": "raw",
+              "multiplier": -1
+            }
+          ],
+          [
+            {
+              "tag": "PaymentsOfOrdinaryDividends",
+              "method": "raw",
+              "multiplier": -1
+            }
+          ]
         ],
-        "other_expense": [
+        "method": "sum_first_tag_found_per_sublist"
+      }
+    ],
+    "stock_issuance_cf": [
+      {
+        "tag": "ProceedsFromRepurchaseOfEquity",
+        "method": "raw"
+      },
+      {
+        "tag_li": [
+          [
             {
-                "tag": "OtherNonoperatingIncomeExpenseOther",
-                "method": "raw",
-                "multiplier": -1
-            },
-            {
-                "tag": "NoninterestIncomeOtherOperatingIncome",
-                "method": "raw",
-                "multiplier": -1
-            },
-            {
-                "tag": "OtherNonoperatingExpense",
-                "method": "raw"
-            },
-            {
-                "tag": "OtherNonoperatingIncomeExpense",
-                "method": "raw",
-                "multiplier": -1
-            },
-            {
-                "tag": "OtherNoninterestExpense",
-                "method": "raw"
+              "tag": "PaymentsForRepurchaseOfCommonStock",
+              "method": "raw",
+              "multiplier": -1
             }
+          ],
+          [
+            {
+              "tag": "ProceedsFromIssuanceOfSharesUnderIncentiveAndShareBasedCompensationPlansIncludingStockOptions",
+              "method": "raw"
+            },
+            {
+              "tag": "ProceedsFromIssuanceOfCommonStock",
+              "method": "raw"
+            },
+            {
+              "tag": "ProceedsFromStockOptionsExercised",
+              "method": "raw"
+            },
+            {
+              "tag": "ProceedsFromStockPlans",
+              "method": "raw"
+            },
+            {
+              "tag": "ProceedsFromIssuanceOfPreferredStockAndPreferenceStock",
+              "method": "raw"
+            }
+          ]
         ],
-        "tax_expense": [
+        "method": "sum_first_tag_found_per_sublist"
+      }
+    ],
+    "debt_issuance_cf": [
+      {
+        "tag": "ProceedsFromIssuanceOfUnsecuredDebt",
+        "method": "raw"
+      },
+      {
+        "tag_li": [
+          [
             {
-                "tag": "IncomeTaxExpenseBenefit",
-                "method": "raw"
+              "tag": "ProceedsFromIssuanceOfDebt",
+              "method": "raw"
+            },
+            {
+              "tag": "ProceedsFromIssuanceOfLongTermDebt",
+              "method": "raw"
+            },
+            {
+              "tag": "ProceedsFromDebtMaturingInMoreThanThreeMonths",
+              "method": "raw"
+            },
+            {
+              "tag": "ProceedsFromIssuanceOfLongTermDebtAndCapitalSecuritiesNet",
+              "method": "raw"
+            },
+            {
+              "tag": "ProceedsFromDebtNetOfIssuanceCosts",
+              "method": "raw"
+            },
+            {
+              "tag": "ProceedsFromIssuanceOfSeniorLongTermDebt",
+              "method": "raw"
             }
+          ],
+          [
+            {
+              "tag": "RepaymentsOfDebt",
+              "method": "raw",
+              "multiplier": -1
+            },
+            {
+              "tag": "RepaymentsOfLongTermDebt",
+              "method": "raw",
+              "multiplier": -1
+            },
+            {
+              "tag": "RepaymentsOfDebtMaturingInMoreThanThreeMonths",
+              "method": "raw",
+              "multiplier": -1
+            },
+            {
+              "tag": "RepaymentsOfDebtMaturingInMoreThanThreeMonths",
+              "method": "raw",
+              "multiplier": -1
+            },
+            {
+              "tag": "RepaymentsOfDebtAndCapitalLeaseObligations",
+              "method": "raw",
+              "multiplier": -1
+            },
+            {
+              "tag": "RepaymentsOfConvertibleDebt",
+              "method": "raw",
+              "multiplier": -1
+            },
+            {
+              "tag": "RepaymentsOfLongTermDebtAndCapitalSecurities",
+              "method": "raw",
+              "multiplier": -1
+            },
+            {
+              "tag": "RepaymentsOfLongTermLinesOfCredit",
+              "method": "raw",
+              "multiplier": -1
+            },
+            {
+              "tag": "RepaymentsOfOtherLongTermDebt",
+              "method": "raw",
+              "multiplier": -1
+            }
+          ]
         ],
-        "net_income": [
+        "method": "sum_first_tag_found_per_sublist"
+      }
+    ],
+    "financing_cf": [
+      {
+        "tag": "NetCashProvidedByUsedInFinancingActivitiesContinuingOperations",
+        "method": "raw"
+      },
+      {
+        "tag": "NetCashProvidedByUsedInFinancingActivities",
+        "method": "raw"
+      }
+    ],
+    "change_in_cash": [
+      {
+        "tag": "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecreaseIncludingExchangeRateEffect",
+        "method": "raw"
+      },
+      {
+        "tag": "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecreaseExcludingExchangeRateEffect",
+        "method": "raw"
+      }
+    ]
+  },
+  "balance_sheet": {
+    "shares_out_pit": [
+      {
+        "tag": "CommonStockSharesOutstanding",
+        "method": "raw"
+      },
+      {
+        "tag": "CommonStockSharesIssued",
+        "method": "raw"
+      }
+    ],
+    "shares_out_preferred_pit": [
+      {
+        "tag": "PreferredStockSharesIssued",
+        "method": "raw"
+      },
+      {
+        "tag": "PreferredStockSharesOutstanding",
+        "method": "raw"
+      },
+      {
+        "tag": "PreferredStockValue",
+        "method": "raw"
+      }
+    ],
+    "cash_and_equiv": [
+      {
+        "tag": "CashAndCashEquivalentsAtCarryingValue",
+        "method": "raw"
+      },
+      {
+        "tag": "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
+        "method": "raw"
+      }
+    ],
+    "marketable_securities_current": [
+      {
+        "tag": "AvailableForSaleSecuritiesDebtSecuritiesCurrent",
+        "method": "raw"
+      },
+      {
+        "tag": "MarketableSecuritiesCurrent",
+        "method": "raw"
+      },
+      {
+        "tag": "MarketableSecurities",
+        "method": "raw"
+      },
+      {
+        "tag": "DebtSecuritiesAvailableForSaleExcludingAccruedInterest",
+        "method": "raw"
+      }
+    ],
+    "accounts_receivable": [
+      {
+        "tag": "AccountsNotesAndLoansReceivableNetCurrent",
+        "method": "raw"
+      },
+      {
+        "tag": "AccountsAndOtherReceivablesNetCurrent",
+        "method": "raw"
+      },
+      {
+        "tag": "ReceivablesNetCurrent",
+        "method": "raw"
+      },
+      {
+        "tag": "AccountsReceivableNetCurrent",
+        "method": "raw"
+      }
+    ],
+    "inventories": [
+      {
+        "tag": "InventoryNet",
+        "method": "raw"
+      },
+      {
+        "tag_li": [
+          [
             {
-                "tag": "IncomeLossFromContinuingOperations",
-                "method": "raw"
-            },
-            {
-                "tag": "ProfitLoss",
-                "method": "raw"
-            },
-            {
-                "tag": "NetIncomeLoss",
-                "method": "raw"
+              "tag": "EnergyRelatedInventory",
+              "method": "raw"
             }
+          ],
+          [
+            {
+              "tag": "InventoryPartsAndComponentsNetOfReserves",
+              "method": "raw"
+            }
+          ]
         ],
-        "shares_out_avg": [
+        "method": "sum_first_tag_found_per_sublist"
+      }
+    ],
+    "total_current_assets": [
+      {
+        "tag": "AssetsCurrent",
+        "method": "raw"
+      }
+    ],
+    "marketable_securities_non_current": [
+      {
+        "tag": "MarketableSecuritiesNoncurrent",
+        "method": "raw"
+      }
+    ],
+    "pp_and_e": [
+      {
+        "tag": "PropertyPlantAndEquipmentNet",
+        "method": "raw"
+      },
+      {
+        "tag": "PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization",
+        "method": "raw"
+      }
+    ],
+    "total_non_current_assets": [
+      {
+        "tag": "AssetsNoncurrent",
+        "method": "raw"
+      },
+      {
+        "tag_li": [
+          [
             {
-                "tag": "WeightedAverageNumberOfSharesOutstandingBasic",
-                "method": "raw"
+              "tag": "Assets",
+              "method": "raw"
             }
+          ],
+          [
+            {
+              "tag": "AssetsCurrent",
+              "method": "raw",
+              "multiplier": -1
+            }
+          ]
         ],
-        "shares_out_avg_diluted": [
+        "method": "sum_first_tag_found_per_sublist",
+        "allow_null_components": false
+      }
+    ],
+    "total_assets": [
+      {
+        "tag": "Assets",
+        "method": "raw"
+      }
+    ],
+    "accounts_payable": [
+      {
+        "tag": "AccountsPayableAndOtherAccruedLiabilitiesCurrent",
+        "method": "raw"
+      },
+      {
+        "tag": "AccountsPayableAndAccruedLiabilitiesCurrent",
+        "method": "raw"
+      },
+      {
+        "tag": "AccountsPayableTradeCurrent",
+        "method": "raw"
+      },
+      {
+        "tag": "AccountsPayableCurrent",
+        "method": "raw"
+      }
+    ],
+    "deferred_revenue_current": [
+      {
+        "tag": "DeferredRevenueCurrent",
+        "method": "raw"
+      },
+      {
+        "tag": "DeferredIncomeCurrent",
+        "method": "raw"
+      },
+      {
+        "tag": "ContractWithCustomerLiabilityCurrent",
+        "method": "raw"
+      },
+      {
+        "tag": "IncreaseDecreaseInContractWithCustomerLiability",
+        "method": "raw"
+      }
+    ],
+    "st_debt": [
+      {
+        "tag_li": [
+          [
             {
-                "tag": "WeightedAverageNumberOfDilutedSharesOutstanding",
-                "method": "raw"
+              "tag": "LongTermDebtAndCapitalLeaseObligationsCurrent",
+              "method": "raw"
+            },
+            {
+              "tag": "LongTermDebtCurrent",
+              "method": "raw"
+            },
+            {
+              "tag": "NotesPayableCurrent",
+              "method": "raw"
+            },
+            {
+              "tag": "DebtCurrent",
+              "method": "raw"
+            },
+            {
+              "tag": "OtherShortTermBorrowings",
+              "method": "raw"
             }
-        ]
-    },
-    "cashflow_statement": {
-        "d_and_a_cf": [
+          ],
+          [
             {
-                "tag": "OtherDepreciationAndAmortization",
-                "method": "raw"
-            },
-            {
-                "tag": "DepreciationAndAmortization",
-                "method": "raw"
-            },
-            {
-                "tag": "DepreciationDepletionAndAmortization",
-                "method": "raw"
-            },
-            {
-                "tag": "DepreciationAmortizationAndAccretionNet",
-                "method": "raw"
-            },
-            {
-                "tag_li": [
-                    [
-                        {
-                            "tag": "Depreciation",
-                            "method": "raw"
-                        }
-                    ],
-                    [
-                        {
-                            "tag": "AdjustmentForAmortization",
-                            "method": "raw"
-                        },
-                        {
-                            "tag": "AmortizationOfIntangibleAssets",
-                            "method": "raw"
-                        }
-                    ]
-                ],
-                "method": "sum_first_tag_found_per_sublist"
+              "tag": "DebtInstrumentUnamortizedPremiumCurrent",
+              "method": "raw"
             }
+          ]
         ],
-        "operating_cf": [
-            {
-                "tag": "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations",
-                "method": "raw"
-            },
-            {
-                "tag": "NetCashProvidedByUsedInOperatingActivities",
-                "method": "raw"
-            }
-        ],
-        "pp_and_e_cf": [
-            {
-                "tag_li": [
-                    [
-                        {
-                            "tag": "PaymentsToAcquirePropertyPlantAndEquipment",
-                            "method": "raw",
-                            "multiplier": -1
-                        },
-                        {
-                            "tag": "PaymentsToAcquireOtherPropertyPlantAndEquipment",
-                            "method": "raw",
-                            "multiplier": -1
-                        },
-                        {
-                            "tag": "PaymentsToAcquireProductiveAssets",
-                            "method": "raw",
-                            "multiplier": -1
-                        }
-                    ],
-                    [
-                        {
-                            "tag": "ProceedsFromSaleOfPropertyPlantAndEquipment",
-                            "method": "raw"
-                        },
-                        {
-                            "tag": "ProceedsFromSaleOfProductiveAssets",
-                            "method": "raw"
-                        }
-                    ]
-                ],
-                "method": "sum_first_tag_found_per_sublist"
-            }
-        ],
-        "investing_cf": [
-            {
-                "tag": "NetCashProvidedByUsedInInvestingActivitiesContinuingOperations",
-                "method": "raw"
-            },
-            {
-                "tag": "NetCashProvidedByUsedInInvestingActivities",
-                "method": "raw"
-            }
-        ],
-        "dividend_cf": [
-            {
-                "tag": "PaymentsOfDividends",
-                "method": "raw",
-                "multiplier": -1
-            },
-            {
-                "tag_li": [
-                    [
-                        {
-                            "tag": "PaymentsOfDividendsCommonStock",
-                            "method": "raw",
-                            "multiplier": -1
-                        }
-                    ],
-                    [
-                        {
-                            "tag": "PaymentsOfDividendsPreferredStockAndPreferenceStock",
-                            "method": "raw",
-                            "multiplier": -1
-                        }
-                    ],
-                    [
-                        {
-                            "tag": "PaymentsOfOrdinaryDividends",
-                            "method": "raw",
-                            "multiplier": -1
-                        }
-                    ]
-                ],
-                "method": "sum_first_tag_found_per_sublist"
-            }
-        ],
-        "stock_issuance_cf": [
-            {
-                "tag": "ProceedsFromRepurchaseOfEquity",
-                "method": "raw"
-            },
-            {
-                "tag_li": [
-                    [
-                        {
-                            "tag": "PaymentsForRepurchaseOfCommonStock",
-                            "method": "raw",
-                            "multiplier": -1
-                        }
-                    ],
-                    [
-                        {
-                            "tag": "ProceedsFromIssuanceOfSharesUnderIncentiveAndShareBasedCompensationPlansIncludingStockOptions",
-                            "method": "raw"
-                        },
-                        {
-                            "tag": "ProceedsFromIssuanceOfCommonStock",
-                            "method": "raw"
-                        },
-                        {
-                            "tag": "ProceedsFromStockOptionsExercised",
-                            "method": "raw"
-                        },
-                        {
-                            "tag": "ProceedsFromStockPlans",
-                            "method": "raw"
-                        },
-                        {
-                            "tag": "ProceedsFromIssuanceOfPreferredStockAndPreferenceStock",
-                            "method": "raw"
-                        }
-                    ]
-                ],
-                "method": "sum_first_tag_found_per_sublist"
-            }
-        ],
-        "debt_issuance_cf": [
-            {
-                "tag": "ProceedsFromIssuanceOfUnsecuredDebt",
-                "method": "raw"
-            },
-            {
-                "tag_li": [
-                    [
-                        {
-                            "tag": "ProceedsFromIssuanceOfDebt",
-                            "method": "raw"
-                        },
-                        {
-                            "tag": "ProceedsFromIssuanceOfLongTermDebt",
-                            "method": "raw"
-                        },
-                        {
-                            "tag": "ProceedsFromDebtMaturingInMoreThanThreeMonths",
-                            "method": "raw"
-                        },
-                        {
-                            "tag": "ProceedsFromIssuanceOfLongTermDebtAndCapitalSecuritiesNet",
-                            "method": "raw"
-                        },
-                        {
-                            "tag": "ProceedsFromDebtNetOfIssuanceCosts",
-                            "method": "raw"
-                        },
-                        {
-                            "tag": "ProceedsFromIssuanceOfSeniorLongTermDebt",
-                            "method": "raw"
-                        }
-                    ],
-                    [
-                        {
-                            "tag": "RepaymentsOfDebt",
-                            "method": "raw",
-                            "multiplier": -1
-                        },
-                        {
-                            "tag": "RepaymentsOfLongTermDebt",
-                            "method": "raw",
-                            "multiplier": -1
-                        },
-                        {
-                            "tag": "RepaymentsOfDebtMaturingInMoreThanThreeMonths",
-                            "method": "raw",
-                            "multiplier": -1
-                        },
-                        {
-                            "tag": "RepaymentsOfDebtMaturingInMoreThanThreeMonths",
-                            "method": "raw",
-                            "multiplier": -1
-                        },
-                        {
-                            "tag": "RepaymentsOfDebtAndCapitalLeaseObligations",
-                            "method": "raw",
-                            "multiplier": -1
-                        },
-                        {
-                            "tag": "RepaymentsOfConvertibleDebt",
-                            "method": "raw",
-                            "multiplier": -1
-                        },
-                        {
-                            "tag": "RepaymentsOfLongTermDebtAndCapitalSecurities",
-                            "method": "raw",
-                            "multiplier": -1
-                        },
-                        {
-                            "tag": "RepaymentsOfLongTermLinesOfCredit",
-                            "method": "raw",
-                            "multiplier": -1
-                        },
-                        {
-                            "tag": "RepaymentsOfOtherLongTermDebt",
-                            "method": "raw",
-                            "multiplier": -1
-                        }
-                    ]
-                ],
-                "method": "sum_first_tag_found_per_sublist"
-            }
-        ],
-        "financing_cf": [
-            {
-                "tag": "NetCashProvidedByUsedInFinancingActivitiesContinuingOperations",
-                "method": "raw"
-            },
-            {
-                "tag": "NetCashProvidedByUsedInFinancingActivities",
-                "method": "raw"
-            }
-        ],
-        "change_in_cash": [
-            {
-                "tag": "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecreaseIncludingExchangeRateEffect",
-                "method": "raw"
-            },
-            {
-                "tag": "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecreaseExcludingExchangeRateEffect",
-                "method": "raw"
-            }
-        ]
-    },
-    "balance_sheet": {
-        "shares_out_pit": [
-            {
-                "tag": "CommonStockSharesOutstanding",
-                "method": "raw"
-            },
-            {
-                "tag": "CommonStockSharesIssued",
-                "method": "raw"
-            }
-        ],
-        "shares_out_preferred_pit": [
-            {
-                "tag": "PreferredStockSharesIssued",
-                "method": "raw"
-            },
-            {
-                "tag": "PreferredStockSharesOutstanding",
-                "method": "raw"
-            },
-            {
-                "tag": "PreferredStockValue",
-                "method": "raw"
-            }
-        ],
-        "cash_and_equiv": [
-            {
-                "tag": "CashAndCashEquivalentsAtCarryingValue",
-                "method": "raw"
-            },
-            {
-                "tag": "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
-                "method": "raw"
-            }
-        ],
-        "marketable_securities_current": [
-            {
-                "tag": "AvailableForSaleSecuritiesDebtSecuritiesCurrent",
-                "method": "raw"
-            },
-            {
-                "tag": "MarketableSecuritiesCurrent",
-                "method": "raw"
-            },
-            {
-                "tag": "MarketableSecurities",
-                "method": "raw"
-            },
-            {
-                "tag": "DebtSecuritiesAvailableForSaleExcludingAccruedInterest",
-                "method": "raw"
-            }
-        ],
-        "accounts_receivable": [
-            {
-                "tag": "AccountsNotesAndLoansReceivableNetCurrent",
-                "method": "raw"
-            },
-            {
-                "tag": "AccountsAndOtherReceivablesNetCurrent",
-                "method": "raw"
-            },
-            {
-                "tag": "ReceivablesNetCurrent",
-                "method": "raw"
-            },
-            {
-                "tag": "AccountsReceivableNetCurrent",
-                "method": "raw"
-            }
-        ],
-        "inventories": [
-            {
-                "tag": "InventoryNet",
-                "method": "raw"
-            },
-            {
-                "tag_li": [
-                    [
-                        {
-                            "tag": "EnergyRelatedInventory",
-                            "method": "raw"
-                        }
-                    ],
-                    [
-                        {
-                            "tag": "InventoryPartsAndComponentsNetOfReserves",
-                            "method": "raw"
-                        }
-                    ]
-                ],
-                "method": "sum_first_tag_found_per_sublist"
-            }
-        ],
-        "total_current_assets": [
-            {
-                "tag": "AssetsCurrent",
-                "method": "raw"
-            }
-        ],
-        "marketable_securities_non_current": [
-            {
-                "tag": "MarketableSecuritiesNoncurrent",
-                "method": "raw"
-            }
-        ],
-        "pp_and_e": [
-            {
-                "tag": "PropertyPlantAndEquipmentNet",
-                "method": "raw"
-            },
-            {
-                "tag": "PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization",
-                "method": "raw"
-            }
-        ],
-        "total_non_current_assets": [
-            {
-                "tag": "AssetsNoncurrent",
-                "method": "raw"
-            },
-            {
-                "tag_li": [
-                    [
-                        {
-                            "tag": "Assets",
-                            "method": "raw"
-                        }
-                    ],
-                    [
-                        {
-                            "tag": "AssetsCurrent",
-                            "method": "raw",
-                            "multiplier": -1
-                        }
-                    ]
-                ],
-                "method": "sum_first_tag_found_per_sublist",
-                "allow_null_components": false
-            }
-        ],
-        "total_assets": [
-            {
-                "tag": "Assets",
-                "method": "raw"
-            }
-        ],
-        "accounts_payable": [
-            {
-                "tag": "AccountsPayableAndOtherAccruedLiabilitiesCurrent",
-                "method": "raw"
-            },
-            {
-                "tag": "AccountsPayableAndAccruedLiabilitiesCurrent",
-                "method": "raw"
-            },
-            {
-                "tag": "AccountsPayableTradeCurrent",
-                "method": "raw"
-            },
-            {
-                "tag": "AccountsPayableCurrent",
-                "method": "raw"
-            }
-        ],
-        "deferred_revenue_current": [
-            {
-                "tag": "DeferredRevenueCurrent",
-                "method": "raw"
-            },
-            {
-                "tag": "DeferredIncomeCurrent",
-                "method": "raw"
-            },
-            {
-                "tag": "ContractWithCustomerLiabilityCurrent",
-                "method": "raw"
-            },
-            {
-                "tag": "IncreaseDecreaseInContractWithCustomerLiability",
-                "method": "raw"
-            }
-        ],
-        "st_debt": [
-            {
-                "tag_li": [
-                    [
-                        {
-                            "tag": "LongTermDebtAndCapitalLeaseObligationsCurrent",
-                            "method": "raw"
-                        },
-                        {
-                            "tag": "LongTermDebtCurrent",
-                            "method": "raw"
-                        },
-                        {
-                            "tag": "NotesPayableCurrent",
-                            "method": "raw"
-                        },
-                        {
-                            "tag": "DebtCurrent",
-                            "method": "raw"
-                        },
-                        {
-                            "tag": "OtherShortTermBorrowings",
-                            "method": "raw"
-                        }
-                    ],
-                    [
-                        {
-                            "tag": "DebtInstrumentUnamortizedPremiumCurrent",
-                            "method": "raw"
-                        }
-                    ]
-                ],
-                "method": "sum_first_tag_found_per_sublist"
-            }
-        ],
-        "lt_debt": [
-            {
-                "tag": "LongTermDebtAndCapitalLeaseObligations",
-                "method": "raw"
-            },
-            {
-                "tag": "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities",
-                "method": "raw"
-            },
-            {
-                "tag": "LongTermNotesAndLoans",
-                "method": "raw"
-            },
-            {
-                "tag": "LongTermDebtNoncurrent",
-                "method": "raw"
-            },
-            {
-                "tag": "LongTermDebt",
-                "method": "raw"
-            }
-        ],
-        "total_current_liabilities": [
-            {
-                "tag": "LiabilitiesCurrent",
-                "method": "raw"
-            }
-        ],
-        "total_non_current_liabilities": [
-            {
-                "tag": "LiabilitiesNoncurrent",
-                "method": "raw"
-            }
-        ],
-        "total_liabilities": [
-            {
-                "tag": "Liabilities",
-                "method": "raw"
-            }
-        ],
-        "retained_earnings": [
-            {
-                "tag": "RetainedEarningsAccumulatedDeficit",
-                "method": "raw"
-            }
-        ],
-        "minority_or_non_controlling_interest": [
-            {
-                "tag": "MinorityInterest",
-                "method": "raw",
-                "default": 0.0
-            }
-        ],
-        "total_shareholders_equity": [
-            {
-                "tag": "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
-                "method": "raw"
-            },
-            {
-                "tag": "StockholdersEquity",
-                "method": "raw"
-            }
-        ],
-        "total_liabilities_and_shareholders_equity": [
-            {
-                "tag": "LiabilitiesAndStockholdersEquity",
-                "method": "raw"
-            }
-        ]
-    },
-    "other": {
-        "shares_out_pit": [
-            {
-                "tag": "EntityCommonStockSharesOutstanding",
-                "method": "raw"
-            }
-        ]
-    }
+        "method": "sum_first_tag_found_per_sublist"
+      }
+    ],
+    "lt_debt": [
+      {
+        "tag": "LongTermDebtAndCapitalLeaseObligations",
+        "method": "raw"
+      },
+      {
+        "tag": "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities",
+        "method": "raw"
+      },
+      {
+        "tag": "LongTermNotesAndLoans",
+        "method": "raw"
+      },
+      {
+        "tag": "LongTermDebtNoncurrent",
+        "method": "raw"
+      },
+      {
+        "tag": "LongTermDebt",
+        "method": "raw"
+      }
+    ],
+    "total_current_liabilities": [
+      {
+        "tag": "LiabilitiesCurrent",
+        "method": "raw"
+      }
+    ],
+    "total_non_current_liabilities": [
+      {
+        "tag": "LiabilitiesNoncurrent",
+        "method": "raw"
+      }
+    ],
+    "total_liabilities": [
+      {
+        "tag": "Liabilities",
+        "method": "raw"
+      }
+    ],
+    "retained_earnings": [
+      {
+        "tag": "RetainedEarningsAccumulatedDeficit",
+        "method": "raw"
+      }
+    ],
+    "minority_or_non_controlling_interest": [
+      {
+        "tag": "MinorityInterest",
+        "method": "raw",
+        "default": 0.0
+      }
+    ],
+    "total_shareholders_equity": [
+      {
+        "tag": "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+        "method": "raw"
+      },
+      {
+        "tag": "StockholdersEquity",
+        "method": "raw"
+      }
+    ],
+    "total_liabilities_and_shareholders_equity": [
+      {
+        "tag": "LiabilitiesAndStockholdersEquity",
+        "method": "raw"
+      }
+    ]
+  },
+  "other": {
+    "shares_out_pit": [
+      {
+        "tag": "EntityCommonStockSharesOutstanding",
+        "method": "raw"
+      }
+    ]
+  }
 }

@@ -1,14 +1,19 @@
-"""Turning tag columns into datapoint columns.
+"""Turning reported facts into datapoint columns.
 
-Every datapoint resolves the same way - first non-null alternative, where an
-alternative sums groups and a group takes the first tag the filing reported -
-and none of that depends on which row is being looked at. So the whole thing is
-expressible as numpy over whole columns.
+Facts arrive one per row. Pivoting them puts a filing's whole statement on one
+row with a column per tag, which is the shape the datapoints are defined over:
+each is the first non-null of its alternatives, where an alternative sums terms
+and a term takes the first tag the filing reported. None of that depends on
+which row is being looked at, so it is all expressible as numpy over whole
+columns.
 
 That matters because the row-at-a-time form costs one Python call per row per
 datapoint: with ~45 datapoints over millions of rows it dominates everything
 else the pipeline does. Evaluating a column at a time makes the cost
 proportional to the number of tags instead, and the row count drops out.
+
+The tag columns exist only between the pivot and the evaluation - nothing
+downstream reads them - so they never leave this module.
 """
 
 import numpy as np
@@ -21,19 +26,22 @@ import pandas as pd
 MAX_NULL_SHARE = 0.5
 
 
-def extract(wide: pd.DataFrame, statement) -> pd.DataFrame:
-    """Add one column per datapoint to a pivoted statement.
+def extract(facts: pd.DataFrame, statement) -> pd.DataFrame:
+    """One row per filing-period, with a column per datapoint.
 
     Args:
-        wide: output of `pivot_statement`, one column per XBRL tag.
+        facts: the long frame from `read_facts`.
         statement: a `StatementSchema`.
 
     Returns:
-        `wide` with a column per datapoint added, and rows dropped where more
-        than half of those columns came back null.
+        The statement's key columns, SEC's `frame` label where it assigned one,
+        and a column per datapoint. Rows are dropped where more than half of
+        those datapoints came back null.
     """
+    wide = _pivot(facts, statement)
     if wide.empty:
-        return wide.reindex(columns=list(wide.columns) + _all_names(statement))
+        return wide.reindex(
+            columns=list(wide.columns) + statement.datapoint_names)
 
     n = len(wide)
 
@@ -54,6 +62,31 @@ def extract(wide: pd.DataFrame, statement) -> pd.DataFrame:
         wide[datapoint.name] = np.where(np.isnan(mapped), derived, mapped)
 
     return _drop_sparse_rows(wide, statement)
+
+
+def _pivot(facts: pd.DataFrame, statement) -> pd.DataFrame:
+    """Facts for one statement, reshaped to a row per filing-period."""
+    keys = statement.key_columns
+
+    rows = facts[facts['tag'].isin(statement.required_tags)]
+    # A fact missing any part of its key cannot be placed on a timeline, and
+    # one missing its value has nothing to contribute.
+    rows = rows.dropna(subset=keys + ['tag', 'val'])
+    # The same tag can appear twice under one key when a filing reports it in
+    # more than one unit. First wins.
+    rows = rows.drop_duplicates(subset=keys + ['tag'], keep='first')
+
+    if rows.empty:
+        return pd.DataFrame(columns=keys + ['frame'])
+
+    wide = rows.pivot(index=keys, columns='tag', values='val')
+    wide = wide.rename_axis(None, axis=1)
+
+    # `frame` belongs to the period rather than to any one tag, so it is
+    # collapsed alongside the pivot instead of becoming a column in it.
+    labels = rows.groupby(keys, sort=False)['frame'].first()
+
+    return wide.join(labels).reset_index()
 
 
 def _apply_overrides(wide: pd.DataFrame, statement) -> None:
@@ -91,27 +124,26 @@ def _datapoint_values(frame: pd.DataFrame, alternatives, n: int) -> np.ndarray:
 
 
 def _alternative_values(frame: pd.DataFrame, alternative, n: int) -> np.ndarray:
-    """Sum of the alternative's groups, or null if the sum cannot stand."""
-    groups = np.vstack([_group_values(frame, g, n)
-                        for g in alternative.groups])
-    missing = np.isnan(groups)
+    """Sum of the alternative's terms, or null if the sum cannot stand."""
+    terms = np.vstack([_term_values(frame, t, n) for t in alternative.terms])
+    missing = np.isnan(terms)
 
     if alternative.allow_null_components:
-        # A group that found nothing contributes nothing; the sum only fails
-        # when no group found anything at all.
+        # A term that found nothing contributes nothing; the sum only fails
+        # when no term found anything at all.
         failed = missing.all(axis=0)
     else:
         # Every component must be present, so a partial sum is not reported.
         failed = missing.any(axis=0)
 
-    return np.where(failed, np.nan, np.nansum(groups, axis=0))
+    return np.where(failed, np.nan, np.nansum(terms, axis=0))
 
 
-def _group_values(frame: pd.DataFrame, group, n: int) -> np.ndarray:
-    """First tag in the group that the filing reported, per row."""
+def _term_values(frame: pd.DataFrame, tags, n: int) -> np.ndarray:
+    """First of `tags` that the filing reported, per row."""
     out = np.full(n, np.nan)
 
-    for tag in group.tags:
+    for tag in tags:
         if tag.name in frame.columns:
             col = frame[tag.name].to_numpy(dtype='float64', copy=True)
             col *= tag.multiplier
@@ -136,16 +168,9 @@ def _group_values(frame: pd.DataFrame, group, n: int) -> np.ndarray:
 
 def _drop_sparse_rows(wide: pd.DataFrame, statement) -> pd.DataFrame:
     """Drop rows where more than half the datapoints came back null."""
-    names = [c for c in _all_names(statement) if c in wide.columns]
+    names = [c for c in statement.datapoint_names if c in wide.columns]
     if not names:
         return wide
 
     null_share = wide[names].isna().sum(axis=1) / len(names)
     return wide[null_share <= MAX_NULL_SHARE]
-
-
-def _all_names(statement) -> list:
-    """Every datapoint column, mappings then calculations, without repeats."""
-    names = [dp.name for dp in statement.mappings]
-    names += [dp.name for dp in statement.calculations if dp.name not in names]
-    return names
