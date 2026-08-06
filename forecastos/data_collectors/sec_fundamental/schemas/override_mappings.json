@@ -1,0 +1,160 @@
+{
+  "income_statement": {
+    "0001341439": {
+      "net_income": [
+        {
+          "tag": "IncomeLossFromContinuingOperations",
+          "method": "raw"
+        },
+        {
+          "tag": "NetIncomeLoss",
+          "method": "raw"
+        },
+        {
+          "tag": "ProfitLoss",
+          "method": "raw"
+        }
+      ]
+    }
+  },
+  "balance_sheet": {
+    "0000002488": {
+      "st_debt": [
+        {
+          "tag_li": [
+            [
+              {
+                "tag": "LongTermDebtAndCapitalLeaseObligationsCurrent",
+                "method": "raw"
+              },
+              {
+                "tag": "LongTermDebtCurrent",
+                "method": "raw"
+              },
+              {
+                "tag": "NotesPayableCurrent",
+                "method": "raw"
+              },
+              {
+                "tag": "DebtCurrent",
+                "method": "raw"
+              },
+              {
+                "tag": "OtherShortTermBorrowings",
+                "method": "raw"
+              },
+              {
+                "tag": "ShortTermBorrowings",
+                "method": "raw"
+              }
+            ],
+            [
+              {
+                "tag": "DebtInstrumentUnamortizedPremiumCurrent",
+                "method": "raw"
+              }
+            ]
+          ],
+          "method": "sum_first_tag_found_per_sublist"
+        }
+      ]
+    },
+    "0000310158": {
+      "st_debt": [
+        {
+          "tag_li": [
+            [
+              {
+                "tag": "LongTermDebtAndCapitalLeaseObligationsCurrent",
+                "method": "raw"
+              },
+              {
+                "tag": "DebtCurrent",
+                "method": "raw"
+              },
+              {
+                "tag": "LongTermDebtCurrent",
+                "method": "raw"
+              },
+              {
+                "tag": "NotesPayableCurrent",
+                "method": "raw"
+              },
+              {
+                "tag": "OtherShortTermBorrowings",
+                "method": "raw"
+              }
+            ],
+            [
+              {
+                "tag": "DebtInstrumentUnamortizedPremiumCurrent",
+                "method": "raw"
+              }
+            ]
+          ],
+          "method": "sum_first_tag_found_per_sublist"
+        }
+      ]
+    },
+    "0000077476": {
+      "st_debt": [
+        {
+          "tag_li": [
+            [
+              {
+                "tag": "ShortTermBorrowings",
+                "method": "raw"
+              },
+              {
+                "tag": "LongTermDebtAndCapitalLeaseObligationsCurrent",
+                "method": "raw"
+              },
+              {
+                "tag": "LongTermDebtCurrent",
+                "method": "raw"
+              },
+              {
+                "tag": "NotesPayableCurrent",
+                "method": "raw"
+              },
+              {
+                "tag": "DebtCurrent",
+                "method": "raw"
+              },
+              {
+                "tag": "OtherShortTermBorrowings",
+                "method": "raw"
+              }
+            ],
+            [
+              {
+                "tag": "DebtInstrumentUnamortizedPremiumCurrent",
+                "method": "raw"
+              }
+            ]
+          ],
+          "method": "sum_first_tag_found_per_sublist"
+        }
+      ]
+    }
+  },
+  "cashflow_statement": {
+    "0000354950": {
+      "d_and_a_cf": [
+        {
+          "tag": "DepreciationDepletionAndAmortization",
+          "method": "raw"
+        }
+      ]
+    },
+    "0000077476": {
+      "d_and_a_cf": [
+        {
+          "tag": "DepreciationDepletionAndAmortization",
+          "method": "raw"
+        }
+      ]
+    }
+  },
+  "other": {}
+}
