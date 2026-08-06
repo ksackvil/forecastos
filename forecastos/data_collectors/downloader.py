@@ -70,12 +70,17 @@ class FileDownloader:
 
     @contextmanager
     def fetch(self, url: str, filename: str) -> Generator[Path, None, None]:
-        """Yield the local path for `url`, deleting it afterwards if `self.cleanup`."""
+        """Yield the local path for `url`, deleting it afterwards if `self.cleanup`.
+
+        Only a file this call downloaded is deleted. One that was already on disk
+        is the caller's, not ours to remove, whatever `cleanup` says.
+        """
+        ours = not (self.data_dir / filename).exists()
         path = self.download(url, filename)
         try:
             yield path
         finally:
-            if self.cleanup:
+            if self.cleanup and ours:
                 print(f"removing {path}")
                 path.unlink(missing_ok=True)
 
