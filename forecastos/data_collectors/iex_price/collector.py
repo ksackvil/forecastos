@@ -39,11 +39,10 @@ class IEXPriceCollector:
 
         Returns:
             One row per symbol per session: date, symbol, open, high, low,
-            close, volume. `date` carries the catalog's own 'YYYYMMDD' form.
+            close, volume. `date` is an ISO date string, 'YYYY-MM-DD'.
 
         Raises:
-            ValueError: no session falls in the range, so a typo'd date fails
-                immediately rather than after a download.
+            ValueError: no session falls in the range.
         """
         catalog = self.fetch_tops_catalog(start, end)
         if catalog.empty:
@@ -130,5 +129,6 @@ def _to_daily_bars(trades: pd.DataFrame, date: str) -> pd.DataFrame:
         .reset_index()
     )
 
-    bars.insert(0, 'date', date)
+    # The catalog keys sessions as 'YYYYMMDD'; bars carry the ISO form.
+    bars.insert(0, 'date', pd.Timestamp(date).strftime('%Y-%m-%d'))
     return bars
