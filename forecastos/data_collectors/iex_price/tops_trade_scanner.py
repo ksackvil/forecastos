@@ -87,8 +87,9 @@ def scan_trades(
         path: gzipped pcap capture covering a single session.
         tops_version: version the capture was published under, spelled as the
             catalog spells it - '1.6' or '1.5'. Selects the trade signature.
-        date: session the capture covers, 'YYYYMMDD'. Only bounds the timestamp
-            plausibility check that rejects false positives.
+        date: session the capture covers, as an ISO date string, 'YYYY-MM-DD'.
+            Only bounds the timestamp plausibility check that rejects false
+            positives.
         progress_every: print progress every N chunks; 0 to stay silent.
 
     Returns:

@@ -72,8 +72,13 @@ class IEXPriceCollector:
         df['size_bytes'] = df['size'].astype('int64')
         df = df[df['feed'] == 'TOPS']
 
+        # The archive keys sessions as 'YYYYMMDD'. Restate them as ISO here, at
+        # the one point they enter the module, so everything downstream - the
+        # range filter, capture filenames, the bars - speaks a single format.
+        dates = pd.to_datetime(df['date'], format='%Y%m%d')
+        df['date'] = dates.dt.strftime('%Y-%m-%d')
+
         # Either bound may be None, meaning no limit on that side
-        dates = pd.to_datetime(df['date'])
         df = df[dates.between(
             pd.Timestamp(start) if start else dates.min(),
             pd.Timestamp(end) if end else dates.max(),
@@ -129,6 +134,5 @@ def _to_daily_bars(trades: pd.DataFrame, date: str) -> pd.DataFrame:
         .reset_index()
     )
 
-    # The catalog keys sessions as 'YYYYMMDD'; bars carry the ISO form.
-    bars.insert(0, 'date', pd.Timestamp(date).strftime('%Y-%m-%d'))
+    bars.insert(0, 'date', date)
     return bars
