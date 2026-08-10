@@ -5,14 +5,23 @@ synthetic frame, so the shapes SEC actually ships - cumulative cash flows,
 instant balance sheet facts, periods that need a quarter implied - are the ones
 under test.
 
-The fixture is Apple, trimmed to the tags the schema reads: 10-K/10-Q facts
-from 2020 on, plus every fact on a form the reader is meant to drop, so the
-form filter has something to exclude. To refresh it:
+The fixture is Apple, cut down from the 3.8 MB SEC file to 192 KB by keeping
+only what the tests need:
+
+  - tags the schema references, dropping each tag's label and description;
+  - 10-K/10-Q facts whose period ends in 2023 or later - three fiscal years,
+    enough for a derived Q4 and for periods reported by more than one filing;
+  - a dozen facts on other forms, so the 10-K/10-Q filter has something to
+    exclude;
+  - minified, since nothing reads it by eye.
+
+Cutting further does not hold: two fiscal years leaves a single derived Q4 row,
+and one leaves none at all. To refresh it, fetch
 
     curl -H 'User-Agent: <name> <you@example.com>' \
       https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json
 
-then filter it the same way - the full file is ~3.8 MB.
+and re-apply those filters.
 """
 
 import json
