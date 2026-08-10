@@ -1,28 +1,19 @@
 """Turning reported facts into datapoint columns.
 
-Facts arrive one per row. Pivoting them puts a filing's whole statement on one
-row with a column per tag, which is the shape the datapoints are defined over:
-each is the first non-null of its alternatives, where an alternative sums terms
-and a term takes the first tag the filing reported. None of that depends on
-which row is being looked at, so it is all expressible as numpy over whole
-columns.
+Facts arrive one per row. Pivoting them gives a row per filing-period with a
+column per tag - the shape datapoints are defined over - so every datapoint is
+numpy over whole columns rather than a Python call per row per datapoint, which
+with ~45 datapoints over millions of rows dominated everything else.
 
-That matters because the row-at-a-time form costs one Python call per row per
-datapoint: with ~45 datapoints over millions of rows it dominates everything
-else the pipeline does. Evaluating a column at a time makes the cost
-proportional to the number of tags instead, and the row count drops out.
-
-The tag columns exist only between the pivot and the evaluation - nothing
-downstream reads them - so they never leave this module.
+The tag columns live only between the pivot and the evaluation; nothing
+downstream reads them.
 """
 
 import numpy as np
 import pandas as pd
 
-# A row where most datapoints came back empty is almost never a real statement.
-# It is usually a single figure disclosed for a period the rest of the filing
-# does not cover, and carrying it forward would put a lone number on a row that
-# reads like a full period.
+# A mostly-empty row is rarely a real statement - usually one figure disclosed
+# for a period the rest of the filing does not cover.
 MAX_NULL_SHARE = 0.5
 
 
@@ -35,8 +26,7 @@ def extract(facts: pd.DataFrame, statement) -> pd.DataFrame:
 
     Returns:
         The statement's key columns, SEC's `frame` label where it assigned one,
-        and a column per datapoint. Rows are dropped where more than half of
-        those datapoints came back null.
+        and a column per datapoint. Rows more than half null are dropped.
     """
     wide = _pivot(facts, statement)
     if wide.empty:
@@ -51,9 +41,9 @@ def extract(facts: pd.DataFrame, statement) -> pd.DataFrame:
 
     _apply_overrides(wide, statement)
 
-    # Calculations are a fallback layer: they derive a datapoint from other
-    # datapoint columns, and only fill in where the mapped value was null. They
-    # run in declaration order because one can read a column another writes.
+    # Calculations derive a datapoint from other datapoint columns and only
+    # fill where the mapped value was null. Declaration order matters - one can
+    # read a column another writes.
     for datapoint in statement.calculations:
         if datapoint.name not in wide.columns:
             wide[datapoint.name] = np.nan
@@ -69,11 +59,9 @@ def _pivot(facts: pd.DataFrame, statement) -> pd.DataFrame:
     keys = statement.key_columns
 
     rows = facts[facts['tag'].isin(statement.required_tags)]
-    # A fact missing any part of its key cannot be placed on a timeline, and
-    # one missing its value has nothing to contribute.
+    # A fact missing part of its key cannot be placed on a timeline.
     rows = rows.dropna(subset=keys + ['tag', 'val'])
-    # The same tag can appear twice under one key when a filing reports it in
-    # more than one unit. First wins.
+    # One tag can appear twice under a key if reported in two units. First wins.
     rows = rows.drop_duplicates(subset=keys + ['tag'], keep='first')
 
     if rows.empty:
@@ -82,21 +70,19 @@ def _pivot(facts: pd.DataFrame, statement) -> pd.DataFrame:
     wide = rows.pivot(index=keys, columns='tag', values='val')
     wide = wide.rename_axis(None, axis=1)
 
-    # `frame` belongs to the period rather than to any one tag, so it is
-    # collapsed alongside the pivot instead of becoming a column in it.
+    # `frame` belongs to the period, not to any one tag, so it is collapsed
+    # alongside the pivot instead of becoming a column in it.
     labels = rows.groupby(keys, sort=False)['frame'].first()
 
     return wide.join(labels).reset_index()
 
 
 def _apply_overrides(wide: pd.DataFrame, statement) -> None:
-    """Recompute a handful of CIKs whose filings need their own tag order.
+    """Recompute the few CIKs whose filings need their own tag order.
 
-    Overrides are tried ahead of the shared mappings rather than replacing
-    them, so the datapoint still falls back to the usual tags. Only the
-    overridden company's rows are touched, which is a few thousand out of
-    millions - cheap enough to redo rather than thread through the vectorized
-    path above.
+    Overrides are tried ahead of the shared mappings, not in place of them.
+    Only the overridden company's rows are touched - a few thousand out of
+    millions, cheap enough to redo rather than thread through the pass above.
     """
     for cik, datapoints in statement.overrides.items():
         mask = (wide['cik'] == cik).to_numpy()
@@ -114,8 +100,7 @@ def _datapoint_values(frame: pd.DataFrame, alternatives, n: int) -> np.ndarray:
     """First alternative that yields a value, per row."""
     out = np.full(n, np.nan)
     for alternative in alternatives:
-        # Once every row has a value there is nothing left for a later
-        # alternative to fill, and the remaining tags need not be touched.
+        # Every row filled - later alternatives have nothing left to do.
         if not np.isnan(out).any():
             break
         out = np.where(np.isnan(out), _alternative_values(
@@ -129,11 +114,10 @@ def _alternative_values(frame: pd.DataFrame, alternative, n: int) -> np.ndarray:
     missing = np.isnan(terms)
 
     if alternative.allow_null_components:
-        # A term that found nothing contributes nothing; the sum only fails
-        # when no term found anything at all.
+        # An empty term contributes nothing; the sum fails only if all are.
         failed = missing.all(axis=0)
     else:
-        # Every component must be present, so a partial sum is not reported.
+        # Every component must be present - no partial sums.
         failed = missing.any(axis=0)
 
     return np.where(failed, np.nan, np.nansum(terms, axis=0))
@@ -148,17 +132,16 @@ def _term_values(frame: pd.DataFrame, tags, n: int) -> np.ndarray:
             col = frame[tag.name].to_numpy(dtype='float64', copy=True)
             col *= tag.multiplier
         else:
-            # A company that never used this tag is the ordinary case, not an
-            # error - that is what the next tag in the group is for.
+            # A company never using this tag is ordinary - that is what the
+            # next tag in the group is for.
             col = np.full(n, np.nan)
 
         if tag.default is not None:
             col = np.where(np.isnan(col), tag.default, col)
 
         if tag.ignore_if_zero:
-            # A reported zero here means the company files the tag but folds
-            # the real figure into another one, so it should not stop the
-            # search the way a genuine value would.
+            # A zero here means the company files the tag but folds the real
+            # figure into another, so it should not end the search.
             col = np.where(col == 0, np.nan, col)
 
         out = np.where(np.isnan(out), col, out)

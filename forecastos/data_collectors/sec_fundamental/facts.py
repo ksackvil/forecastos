@@ -1,18 +1,17 @@
 """Reading the companyfacts archive into one fact per row.
 
-The archive holds one JSON member per filer, each a nesting of
-taxonomy -> tag -> unit -> [facts]. Two filters run here rather than downstream,
-because both cut the row count before a DataFrame is built at all:
+The archive holds one JSON member per filer, nested
+taxonomy -> tag -> unit -> [facts]. Two filters run here, before any DataFrame
+is built:
 
-  - only tags the schema can reference are kept, ~150 against a median of ~270
-    us-gaap tags per company;
-  - only 10-K and 10-Q facts are kept, which is also the entity filter. Funds,
-    trusts and shells file N-CSR and 10-D, never a 10-K, so they fall out here
-    without needing the 1.4 GB submissions archive to identify them.
+  - only tags the schema can reference, ~150 against a median of ~270 us-gaap
+    tags per company;
+  - only 10-K and 10-Q facts, which doubles as the entity filter - funds,
+    trusts and shells file N-CSR and 10-D, never a 10-K, so they drop out
+    without needing the 1.4 GB submissions archive.
 
-Members are read out of the zip in place. The central directory indexes every
-entry, so one company is a seek and a single deflate stream while the rest stay
-compressed - there is no reason to spend 17 GB of disk unpacking the archive.
+Members are read out of the zip in place: one company is a seek and a single
+deflate stream, rather than 17 GB of disk to unpack the whole thing.
 """
 
 import json
@@ -22,8 +21,8 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-# Only these are read; everything else in a filing describes a period we cannot
-# place or an entity we are not collecting.
+# Everything else describes a period we cannot place or an entity we are not
+# collecting.
 WANTED_FORMS = frozenset({'10-K', '10-Q'})
 
 # `dei` carries EntityCommonStockSharesOutstanding, the fallback share count.
@@ -46,8 +45,8 @@ def read_facts(
 
     Args:
         archive_path: path to companyfacts.zip.
-        tags: XBRL tags to keep. Anything else is discarded before it becomes a
-            row - this is the single largest reduction in the pipeline.
+        tags: XBRL tags to keep. The rest is discarded before becoming a row -
+            the single largest reduction in the pipeline.
         ciks: restrict to these filers. None reads all ~19k.
 
     Returns:
@@ -65,9 +64,8 @@ def read_facts(
                 print(f'\r  parsed {i} / {len(names)} companies', end='')
     print()
 
-    # Companies that reported none of the wanted tags contribute an empty
-    # frame, and concatenating those would let their all-null columns decide
-    # the result's dtypes.
+    # Companies reporting none of the wanted tags contribute an empty frame,
+    # whose all-null columns would otherwise decide the result's dtypes.
     frames = [f for f in frames if not f.empty]
     if not frames:
         return _clean(pd.DataFrame(columns=FACT_COLS))
@@ -84,8 +82,8 @@ def _read_member(
     try:
         payload = archive.read(name)
     except KeyError:
-        # A filer with no XBRL facts has no member at all, which is a data
-        # answer rather than a corrupt archive.
+        # A filer with no XBRL facts has no member - a data answer, not a
+        # corrupt archive.
         raise ValueError(
             f'{name} is not in the archive - that filer has no XBRL facts'
         ) from None
@@ -111,13 +109,12 @@ def _to_facts(company: dict, tags: frozenset, member_cik: str) -> pd.DataFrame:
     """Flatten one company into a row per fact, keeping only wanted tags.
 
     The tag and form tests run against the parsed dicts, before any row is
-    built. Discarding here rather than after the frame exists is what keeps the
-    intermediate roughly a quarter of the size it would otherwise be.
+    built, which keeps the intermediate about a quarter of its full size.
     """
     records, tag_labels, counts = [], [], []
 
-    # A handful of members are an empty object - a filer SEC has an entry for
-    # and no facts under. There is nothing to read out of them.
+    # Some members are an empty object - a filer SEC has an entry for and no
+    # facts under.
     facts = company.get('facts', {})
     for taxonomy in WANTED_TAXONOMIES:
         for tag, body in facts.get(taxonomy, {}).items():
@@ -134,22 +131,19 @@ def _to_facts(company: dict, tags: frozenset, member_cik: str) -> pd.DataFrame:
     if not records:
         return pd.DataFrame(columns=FACT_COLS)
 
-    # The fact dicts go to pandas in one batch and the tag is attached
-    # afterwards by repeating it over its own run. Building a row dict per fact
-    # would copy every record back through Python a field at a time.
+    # One batch to pandas, with the tag repeated over its own run afterwards.
+    # A row dict per fact would copy every record back through Python.
     df = pd.DataFrame(records)
     df['tag'] = np.repeat(np.array(tag_labels, dtype=object), counts)
 
-    # Padded, so a CIK read back from a csv still joins against SEC's own
-    # ticker mappings rather than losing its leading zeros to an int cast.
-    # About a quarter of members carry the CIK as a string rather than an int,
-    # and the member name is authoritative for the rest, so neither the type
-    # nor the presence of the field is relied on.
+    # From the member name, which is authoritative - the CIK field is a string
+    # in about a quarter of members. Padded so a CIK read back from a csv still
+    # joins against SEC's ticker mappings.
     df['cik'] = member_cik
 
-    # reindex rather than a plain column select: `start` and `frame` are absent
-    # from most records and can be missing from a company's facts entirely, and
-    # the schema should not change shape because of who was asked for.
+    # reindex, not a column select: `start` and `frame` are absent from most
+    # records and can be missing from a company entirely, and the shape should
+    # not depend on who was asked for.
     return df.reindex(columns=FACT_COLS)
 
 
@@ -160,8 +154,8 @@ def _clean(facts: pd.DataFrame) -> pd.DataFrame:
 
     facts['val'] = pd.to_numeric(facts['val'], errors='coerce')
 
-    # A missing fiscal year is not a reason to drop the fact - `start`/`end`
-    # carry the period, and `fy` only labels the filing it arrived in.
+    # A missing fiscal year is no reason to drop the fact - `start`/`end` carry
+    # the period, `fy` only labels the filing it arrived in.
     facts['fy'] = facts['fy'].fillna(0).astype('int64')
 
     return facts

@@ -1,33 +1,30 @@
 """Putting extracted statements onto a comparable timeline, and merging them.
 
-Filings do not report comparable periods. An income statement in a 10-K covers
-the full year, so the fourth quarter only exists as the year minus the three
-quarters already filed. Cash flow statements are frequently cumulative from the
-start of the fiscal year, so Q3 as filed is really nine months. Balance sheets
-are instants, so a period's opening position is the previous filing's close.
+Filings do not report comparable periods. A 10-K income statement covers the
+full year, so Q4 only exists as the year minus the three quarters already
+filed. Cash flow statements are often cumulative from the start of the fiscal
+year, so Q3 as filed is really nine months. Balance sheets are instants, so a
+period's opening position is the previous filing's close.
 
-All three repairs need the same thing: for a given row, the same company's
-filing from N months earlier. That lookup used to run as a scan of the whole
-frame per row - which made the pipeline quadratic in row count, and made adding
-companies far more expensive than it should be. `adjacent` does it as one
-sorted merge per offset instead, and the comparisons never leave a CIK.
+All three repairs need the same lookup: for a row, the same company's filing
+from N months earlier. `adjacent` does it as one merge per offset, replacing a
+per-row scan that made the pipeline quadratic in row count.
 """
 
 import numpy as np
 import pandas as pd
 
-# How far a filing may sit from where the offset puts it and still be taken as
-# the one we were looking for. Fiscal calendars drift by a few days a year and
-# filing dates move around holidays, so an exact date would match almost
-# nothing.
+# How far a filing may sit from where the offset puts it and still count as a
+# match. Fiscal calendars drift and filing dates move around holidays, so an
+# exact date would match almost nothing.
 ADJACENCY_TOLERANCE = pd.Timedelta(days=30)
 
-# A period is taken as quarterly or annual if it lands within this many months
-# of 3 or 12. Reported periods are rarely exactly that long.
+# Quarterly or annual if within this many months of 3 or 12. Reported periods
+# are rarely exactly that long.
 PERIOD_TOLERANCE = 1.0
 
-# What makes a reported figure distinct, used to drop rows that a company
-# stubbed correctly and we then stubbed again.
+# What makes a figure distinct, used to drop rows a company stubbed correctly
+# and we then stubbed again.
 DEDUPE_KEYS = ['cik', 'fy', 'fp', 'form',
                'accn', 'start', 'end', 'period', 'filed']
 
@@ -56,8 +53,8 @@ def normalize(wide: pd.DataFrame, statement) -> pd.DataFrame:
 def _steps(statement) -> list:
     """The repairs this statement needs, in the order they have to happen.
 
-    Cash flow stubs its cumulative periods before implying Q4, because the Q4
-    arithmetic subtracts three quarters and they have to be quarters first.
+    Cash flow stubs cumulative periods before implying Q4: that arithmetic
+    subtracts three quarters, which have to be quarters first.
     """
     if statement.is_pit:
         return [_to_start_end_columns, _imply_starting_values]
@@ -109,16 +106,13 @@ def adjacent(df: pd.DataFrame, months: int, value_cols: list) -> pd.DataFrame:
 def _match_positions(df: pd.DataFrame, months: int) -> np.ndarray:
     """Row offset of each row's counterpart `months` back, or -1 if there is none.
 
-    Both the period end and the filing date have to line up. That pair is what
-    distinguishes the prior quarter's own filing from the same quarter carried
-    as a comparative in a later one - the period end matches either way, and
-    only the filing date tells them apart.
+    Period end and filing date both have to line up: the end matches either
+    way, and only the filing date separates the prior quarter's own filing from
+    that quarter carried as a comparative in a later one.
 
-    Neither date is unique on its own, so the candidates are found by bucketing
-    period ends into tolerance-wide bins and joining a row against the three
-    bins its target could fall in. That keeps the comparisons to a handful per
-    row within one company, where scanning the frame per row - what this
-    replaces - made the whole pipeline quadratic in row count.
+    Neither date is unique alone, so candidates come from bucketing period ends
+    into tolerance-wide bins and joining a row against the three bins its
+    target could land in - a handful of comparisons per row within one company.
     """
     n = len(df)
     end, filed = df['end'], df['filed']
@@ -147,8 +141,8 @@ def _match_positions(df: pd.DataFrame, months: int) -> np.ndarray:
     right['_bin'] = right['match_end'].astype('int64') // width
     target_bin = left['target_end'].astype('int64') // width
 
-    # A target within one tolerance of a bin edge lands in the neighbouring
-    # bin, so all three have to be probed to cover the window.
+    # A target near a bin edge lands in the neighbouring bin, so all three have
+    # to be probed to cover the window.
     candidates = pd.concat(
         [left.assign(_bin=target_bin + offset).merge(
             right, on=['cik', '_bin'], how='inner')
@@ -166,10 +160,8 @@ def _match_positions(df: pd.DataFrame, months: int) -> np.ndarray:
     )
     candidates = candidates[within]
 
-    # An ambiguous window is not resolved by picking one: two filings both
-    # sitting where the prior quarter should be means we cannot say which is
-    # the quarter, and a wrong pick would silently corrupt the arithmetic that
-    # subtracts it.
+    # Two filings where the prior quarter should be means we cannot say which
+    # it is, and a wrong pick would silently corrupt the subtraction.
     unique = candidates.groupby('_row')['_pos'].transform('size').eq(1)
     candidates = candidates[unique]
 
@@ -189,8 +181,8 @@ def _add_period(df: pd.DataFrame, statement=None) -> pd.DataFrame:
 def _keep_quarterly_and_annual(df: pd.DataFrame, statement=None) -> pd.DataFrame:
     """Drop periods that are neither a quarter nor a year.
 
-    Filings carry plenty of other spans - six month stubs, transition periods,
-    life-to-date totals - and none of them line up with anything else.
+    Filings carry other spans - six month stubs, transition periods,
+    life-to-date totals - that line up with nothing else.
     """
     period = df['period']
     return df[(period - 3.0).abs().lt(PERIOD_TOLERANCE)
@@ -200,8 +192,8 @@ def _keep_quarterly_and_annual(df: pd.DataFrame, statement=None) -> pd.DataFrame
 def _imply_quarterly(df: pd.DataFrame, statement) -> pd.DataFrame:
     """Turn cumulative year-to-date figures into the quarter alone.
 
-    Q2 and Q3 cash flow statements usually run from the start of the fiscal
-    year, so the quarter is the filing minus the one before it.
+    Q2 and Q3 cash flow usually runs from the start of the fiscal year, so the
+    quarter is the filing minus the one before it.
     """
     names = _value_columns(df, statement)
     prior = adjacent(df, 3, names)
@@ -222,17 +214,17 @@ def _imply_quarterly(df: pd.DataFrame, statement) -> pd.DataFrame:
         df.loc[cumulative, 'period'] = _months_between(
             df.loc[cumulative, 'start'], df.loc[cumulative, 'end'])
 
-    # Some companies report the stubbed figure themselves, in which case our
-    # stub reproduces a row that is already there.
+    # Some companies report the stubbed figure themselves, so our stub can
+    # reproduce a row that is already there.
     return df.drop_duplicates(subset=DEDUPE_KEYS, keep='first')
 
 
 def _imply_q4(df: pd.DataFrame, statement) -> pd.DataFrame:
     """Add a fourth quarter, which no filing reports on its own.
 
-    The 10-K covers the full year, so Q4 is that year less the three quarters
-    already filed - and only where all three were found, since a missing one
-    would silently turn into a year-sized quarter.
+    Q4 is the 10-K's full year less the three quarters already filed - only
+    where all three were found, since a missing one would turn into a
+    year-sized quarter.
     """
     names = _value_columns(df, statement)
     q3, q2, q1 = (adjacent(df, months, names) for months in (3, 6, 9))
@@ -249,8 +241,7 @@ def _imply_q4(df: pd.DataFrame, statement) -> pd.DataFrame:
     fourth['fp'] = 'Q4'
     fourth['start'] = q3.loc[full_year, 'end'] + pd.Timedelta(days=1)
     fourth['period'] = _months_between(fourth['start'], fourth['end'])
-    # SEC's calendar label belongs to the period the filing reported, not to
-    # one we derived from it.
+    # SEC's label belongs to the reported period, not to one we derived.
     fourth['frame'] = np.nan
 
     for name in names:
@@ -272,10 +263,10 @@ def _to_start_end_columns(df: pd.DataFrame, statement) -> pd.DataFrame:
 
 
 def _imply_starting_values(df: pd.DataFrame, statement) -> pd.DataFrame:
-    """Carry the previous filing's closing position in as this period's opening.
+    """Carry the previous filing's close in as this period's opening.
 
-    An annual row opens where the prior year closed; a quarterly row opens
-    where the prior quarter did.
+    An annual row opens where the prior year closed, a quarterly row where the
+    prior quarter did.
     """
     names = [name for name in statement.datapoint_names
              if f'end_{name}' in df.columns]
@@ -316,8 +307,7 @@ def merge_statements(statements: dict) -> pd.DataFrame:
         return pd.DataFrame()
 
     merged = income.merge(
-        # `frame` is the period's calendar label and both sides carry the same
-        # one, so it is taken from the income statement alone.
+        # Both sides carry the same `frame`, so take the income statement's.
         cashflow.drop(columns=['frame'], errors='ignore'),
         on=FLOW_MERGE_KEYS,
         how='outer',
@@ -325,8 +315,7 @@ def merge_statements(statements: dict) -> pd.DataFrame:
 
     if balance is not None and not balance.empty:
         merged = merged.merge(
-            # `fp` is already on the left from the flow statements, and the
-            # balance sheet's copy of it is not part of the join.
+            # `fp` already came from the flow statements and is not in the join.
             balance.drop(columns=['fp', 'frame'], errors='ignore'),
             on=PIT_MERGE_KEYS,
             how='left',
@@ -340,8 +329,8 @@ def merge_statements(statements: dict) -> pd.DataFrame:
 def _clean_fiscal_year(df: pd.DataFrame) -> pd.DataFrame:
     """Label each period by the year it covers, not the year it was filed in.
 
-    A period reported again in a later filing arrives carrying that filing's
-    fiscal year, which would put one period under two labels.
+    A period repeated in a later filing carries that filing's fiscal year,
+    which would put one period under two labels.
     """
     df['fy'] = df.groupby(
         ['cik', 'fp', 'start', 'end'], dropna=False)['fy'].transform('min')
@@ -351,8 +340,8 @@ def _clean_fiscal_year(df: pd.DataFrame) -> pd.DataFrame:
 def _fill_from_earlier_filings(df: pd.DataFrame) -> pd.DataFrame:
     """Fill gaps in a restatement from the filing that reported the period first.
 
-    A later filing often carries a period as a comparative and repeats only
-    some of it. The rest was not withdrawn, it simply was not restated.
+    A comparative often repeats only part of a period. The rest was not
+    withdrawn, it simply was not restated.
     """
     df = df.sort_values('filed')
     group = ['cik', 'fy', 'fp', 'form', 'start', 'end']
@@ -366,8 +355,8 @@ def _fill_from_earlier_filings(df: pd.DataFrame) -> pd.DataFrame:
 def _flag_latest(df: pd.DataFrame) -> pd.DataFrame:
     """Mark the most recently filed version of each period.
 
-    Every version is kept - which one is correct depends on when you are
-    asking - so this only labels the newest rather than dropping the rest.
+    Which version is correct depends on when you are asking, so this labels
+    the newest rather than dropping the rest.
     """
     latest = df.groupby(
         ['cik', 'start', 'end', 'period'], dropna=False)['filed'].transform('max')
