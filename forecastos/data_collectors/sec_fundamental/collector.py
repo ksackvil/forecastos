@@ -1,6 +1,5 @@
 """Fundamental statements built from SEC's bulk XBRL companyfacts archive."""
 
-import os
 from pathlib import Path
 
 import pandas as pd
@@ -9,7 +8,7 @@ from ..downloader import FileDownloader
 from .extract import extract
 from .facts import read_facts
 from .normalize import merge_statements, normalize
-from .schema import Schema
+from .schema import load_schema, required_tags
 
 DEFAULT_DATA_DIR = str(Path.cwd() / 'data')
 
@@ -17,7 +16,7 @@ ARCHIVE_FILENAME = 'companyfacts.zip'
 
 COMPANY_FACTS_URL = 'https://www.sec.gov/Archives/edgar/daily-index/xbrl/companyfacts.zip'
 
-SCHEMA_DIR = os.path.join(os.path.dirname(__file__), 'schemas')
+SCHEMA_DIR = Path(__file__).parent / 'schemas'
 
 
 class SECFundamentalCollector:
@@ -42,10 +41,9 @@ class SECFundamentalCollector:
         data_dir: str = DEFAULT_DATA_DIR,
         cleanup: bool = True,
     ):
-        self.sec_request_headers = {'User-Agent': user_agent}
         self.downloader = FileDownloader(
-            data_dir, cleanup, self.sec_request_headers)
-        self.schema = Schema.from_dir(SCHEMA_DIR)
+            data_dir, cleanup, {'User-Agent': user_agent})
+        self.schema = load_schema(SCHEMA_DIR)
 
     def collect(self, ciks: list = None) -> pd.DataFrame:
         """Fundamental statements, one row per company per period per filing.
@@ -95,7 +93,7 @@ class SECFundamentalCollector:
         """
         with self.downloader.fetch(COMPANY_FACTS_URL, ARCHIVE_FILENAME) as path:
             print('reading facts')
-            facts = read_facts(path, self.schema.required_tags, ciks=ciks)
+            facts = read_facts(path, required_tags(self.schema), ciks=ciks)
 
         statements = {}
         for statement in self.schema:

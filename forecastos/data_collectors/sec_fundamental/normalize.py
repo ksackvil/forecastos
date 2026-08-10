@@ -23,14 +23,10 @@ ADJACENCY_TOLERANCE = pd.Timedelta(days=30)
 # are rarely exactly that long.
 PERIOD_TOLERANCE = 1.0
 
-# What makes a figure distinct, used to drop rows a company stubbed correctly
-# and we then stubbed again.
-DEDUPE_KEYS = ['cik', 'fy', 'fp', 'form',
+# What makes a reported figure distinct. Income and cash flow describe the same
+# period, so they also join on all of it.
+PERIOD_KEYS = ['cik', 'fy', 'fp', 'form',
                'accn', 'start', 'end', 'period', 'filed']
-
-# Income and cash flow describe the same period, so they join on all of it.
-FLOW_MERGE_KEYS = ['cik', 'fy', 'fp', 'form',
-                   'accn', 'start', 'end', 'period', 'filed']
 
 # The balance sheet is an instant, so it joins on the period's close only.
 PIT_MERGE_KEYS = ['cik', 'fy', 'form', 'accn', 'end', 'filed']
@@ -57,15 +53,11 @@ def _steps(statement) -> list:
     subtracts three quarters, which have to be quarters first.
     """
     if statement.is_pit:
-        return [_to_start_end_columns, _imply_starting_values]
-
-    per_statement = {
-        'income_statement': [_add_period, _keep_quarterly_and_annual, _imply_q4],
-        'cashflow_statement': [
-            _add_period, _imply_quarterly, _imply_q4, _keep_quarterly_and_annual],
-    }
-    return per_statement.get(
-        statement.name, [_add_period, _keep_quarterly_and_annual])
+        return [_imply_starting_values]
+    if statement.name == 'cashflow_statement':
+        return [_add_period, _imply_quarterly,
+                _imply_q4, _keep_quarterly_and_annual]
+    return [_add_period, _keep_quarterly_and_annual, _imply_q4]
 
 
 # === Finding the filing N months back === #
@@ -80,27 +72,14 @@ def adjacent(df: pd.DataFrame, months: int, value_cols: list) -> pd.DataFrame:
         value_cols: columns to carry over from the matched row.
 
     Returns:
-        A frame on `df`'s index holding the matched row's end, filed and
-        `value_cols`, all null where nothing matched.
+        A frame on `df`'s index holding the matched row's end and `value_cols`,
+        all null where nothing matched.
     """
-    out_cols = ['end', 'filed'] + value_cols
-    if df.empty:
-        return pd.DataFrame(index=df.index, columns=out_cols, dtype='float64')
-
     position = _match_positions(df, months)
-    found = position >= 0
-
-    matched = {}
-    for col in ('end', 'filed'):
-        values = np.full(len(df), np.datetime64('NaT'), dtype='datetime64[ns]')
-        values[found] = df[col].to_numpy()[position[found]]
-        matched[col] = values
-    for col in value_cols:
-        values = np.full(len(df), np.nan)
-        values[found] = df[col].to_numpy(dtype='float64')[position[found]]
-        matched[col] = values
-
-    return pd.DataFrame(matched, index=df.index)
+    return (df[['end'] + value_cols]
+            .iloc[np.maximum(position, 0)]
+            .set_axis(df.index)
+            .where(pd.Series(position >= 0, index=df.index), axis=0))
 
 
 def _match_positions(df: pd.DataFrame, months: int) -> np.ndarray:
@@ -116,26 +95,23 @@ def _match_positions(df: pd.DataFrame, months: int) -> np.ndarray:
     """
     n = len(df)
     end, filed = df['end'], df['filed']
-    target_end = end - pd.DateOffset(months=months)
-    target_filed = filed - pd.DateOffset(months=months)
 
-    usable = end.notna() & filed.notna()
+    usable = (end.notna() & filed.notna()).to_numpy()
+    out = np.full(n, -1, dtype='int64')
+    if not usable.any():
+        return out
+
+    keys = {'_row': np.flatnonzero(usable), 'cik': df['cik'].to_numpy()[usable]}
     left = pd.DataFrame({
-        '_row': np.arange(n)[usable.to_numpy()],
-        'cik': df.loc[usable, 'cik'].to_numpy(),
-        'target_end': target_end[usable].to_numpy(),
-        'target_filed': target_filed[usable].to_numpy(),
+        **keys,
+        'target_end': (end - pd.DateOffset(months=months)).to_numpy()[usable],
+        'target_filed': (filed - pd.DateOffset(months=months)).to_numpy()[usable],
     })
     right = pd.DataFrame({
-        '_pos': np.arange(n)[usable.to_numpy()],
-        'cik': df.loc[usable, 'cik'].to_numpy(),
-        'match_end': end[usable].to_numpy(),
-        'match_filed': filed[usable].to_numpy(),
-    })
-
-    out = np.full(n, -1, dtype='int64')
-    if left.empty:
-        return out
+        **keys,
+        'match_end': end.to_numpy()[usable],
+        'match_filed': filed.to_numpy()[usable],
+    }).rename(columns={'_row': '_pos'})
 
     width = ADJACENCY_TOLERANCE.value
     right['_bin'] = right['match_end'].astype('int64') // width
@@ -149,8 +125,6 @@ def _match_positions(df: pd.DataFrame, months: int) -> np.ndarray:
          for offset in (-1, 0, 1)],
         ignore_index=True,
     )
-    if candidates.empty:
-        return out
 
     within = (
         (candidates['match_end'] - candidates['target_end']).abs()
@@ -158,12 +132,9 @@ def _match_positions(df: pd.DataFrame, months: int) -> np.ndarray:
         & (candidates['match_filed'] - candidates['target_filed']).abs()
         .lt(ADJACENCY_TOLERANCE)
     )
-    candidates = candidates[within]
-
     # Two filings where the prior quarter should be means we cannot say which
     # it is, and a wrong pick would silently corrupt the subtraction.
-    unique = candidates.groupby('_row')['_pos'].transform('size').eq(1)
-    candidates = candidates[unique]
+    candidates = candidates[within].drop_duplicates('_row', keep=False)
 
     out[candidates['_row'].to_numpy()] = candidates['_pos'].to_numpy()
     return out
@@ -172,13 +143,13 @@ def _match_positions(df: pd.DataFrame, months: int) -> np.ndarray:
 # === Period repairs === #
 
 
-def _add_period(df: pd.DataFrame, statement=None) -> pd.DataFrame:
+def _add_period(df: pd.DataFrame, _statement) -> pd.DataFrame:
     """Length of each row's period, in months."""
     df['period'] = _months_between(df['start'], df['end'])
     return df
 
 
-def _keep_quarterly_and_annual(df: pd.DataFrame, statement=None) -> pd.DataFrame:
+def _keep_quarterly_and_annual(df: pd.DataFrame, _statement) -> pd.DataFrame:
     """Drop periods that are neither a quarter nor a year.
 
     Filings carry other spans - six month stubs, transition periods,
@@ -195,7 +166,7 @@ def _imply_quarterly(df: pd.DataFrame, statement) -> pd.DataFrame:
     Q2 and Q3 cash flow usually runs from the start of the fiscal year, so the
     quarter is the filing minus the one before it.
     """
-    names = _value_columns(df, statement)
+    names = statement.datapoint_names
     prior = adjacent(df, 3, names)
 
     cumulative = (
@@ -205,18 +176,16 @@ def _imply_quarterly(df: pd.DataFrame, statement) -> pd.DataFrame:
         & prior['end'].notna()
     )
 
-    if cumulative.any():
-        for name in names:
-            df.loc[cumulative, name] = (
-                df.loc[cumulative, name] - prior.loc[cumulative, name])
-        df.loc[cumulative, 'start'] = (
-            prior.loc[cumulative, 'end'] + pd.Timedelta(days=1))
-        df.loc[cumulative, 'period'] = _months_between(
-            df.loc[cumulative, 'start'], df.loc[cumulative, 'end'])
+    df.loc[cumulative, names] = (
+        df.loc[cumulative, names] - prior.loc[cumulative, names])
+    df.loc[cumulative, 'start'] = (
+        prior.loc[cumulative, 'end'] + pd.Timedelta(days=1))
+    df.loc[cumulative, 'period'] = _months_between(
+        df.loc[cumulative, 'start'], df.loc[cumulative, 'end'])
 
     # Some companies report the stubbed figure themselves, so our stub can
     # reproduce a row that is already there.
-    return df.drop_duplicates(subset=DEDUPE_KEYS, keep='first')
+    return df.drop_duplicates(subset=PERIOD_KEYS, keep='first')
 
 
 def _imply_q4(df: pd.DataFrame, statement) -> pd.DataFrame:
@@ -226,7 +195,7 @@ def _imply_q4(df: pd.DataFrame, statement) -> pd.DataFrame:
     where all three were found, since a missing one would turn into a
     year-sized quarter.
     """
-    names = _value_columns(df, statement)
+    names = statement.datapoint_names
     q3, q2, q1 = (adjacent(df, months, names) for months in (3, 6, 9))
 
     full_year = (
@@ -243,46 +212,28 @@ def _imply_q4(df: pd.DataFrame, statement) -> pd.DataFrame:
     fourth['period'] = _months_between(fourth['start'], fourth['end'])
     # SEC's label belongs to the reported period, not to one we derived.
     fourth['frame'] = np.nan
-
-    for name in names:
-        fourth[name] = df.loc[full_year, name] - (
-            q3.loc[full_year, name]
-            + q2.loc[full_year, name]
-            + q1.loc[full_year, name])
+    fourth[names] = df.loc[full_year, names] - (
+        q3.loc[full_year, names]
+        + q2.loc[full_year, names]
+        + q1.loc[full_year, names])
 
     return pd.concat([df, fourth], ignore_index=True)
 
 
-def _to_start_end_columns(df: pd.DataFrame, statement) -> pd.DataFrame:
-    """Rename instant values to the period's close and make room for its open."""
-    names = _value_columns(df, statement)
-    df = df.rename(columns={name: f'end_{name}' for name in names})
-    for name in names:
-        df[f'start_{name}'] = np.nan
-    return df
-
-
 def _imply_starting_values(df: pd.DataFrame, statement) -> pd.DataFrame:
-    """Carry the previous filing's close in as this period's opening.
+    """Rename instant values to the period's close, and imply its open.
 
-    An annual row opens where the prior year closed, a quarterly row where the
-    prior quarter did.
+    A period opens where the previous filing closed - the prior year for an
+    annual row, the prior quarter for a quarterly one.
     """
-    names = [name for name in statement.datapoint_names
-             if f'end_{name}' in df.columns]
+    names = statement.datapoint_names
     end_cols = [f'end_{name}' for name in names]
-    if not end_cols:
-        return df
+    df = df.rename(columns=dict(zip(names, end_cols)))
 
-    annual = adjacent(df, 12, end_cols)
-    quarterly = adjacent(df, 3, end_cols)
-    is_annual = df['fp'].eq('FY').to_numpy()
-
-    for name in names:
-        df[f'start_{name}'] = np.where(
-            is_annual,
-            annual[f'end_{name}'].to_numpy(dtype='float64'),
-            quarterly[f'end_{name}'].to_numpy(dtype='float64'))
+    annual = adjacent(df, 12, end_cols)[end_cols].to_numpy(dtype='float64')
+    quarterly = adjacent(df, 3, end_cols)[end_cols].to_numpy(dtype='float64')
+    df[[f'start_{name}' for name in names]] = np.where(
+        df['fp'].eq('FY').to_numpy()[:, None], annual, quarterly)
 
     return df
 
@@ -299,24 +250,23 @@ def merge_statements(statements: dict) -> pd.DataFrame:
     Returns:
         The merged frame, or an empty one if there was nothing to join.
     """
-    income = statements.get('income_statement')
-    cashflow = statements.get('cashflow_statement')
-    balance = statements.get('balance_sheet')
-
-    if income is None or income.empty or cashflow is None or cashflow.empty:
+    income, cashflow = (statements['income_statement'],
+                        statements['cashflow_statement'])
+    if income.empty or cashflow.empty:
         return pd.DataFrame()
 
     merged = income.merge(
         # Both sides carry the same `frame`, so take the income statement's.
-        cashflow.drop(columns=['frame'], errors='ignore'),
-        on=FLOW_MERGE_KEYS,
+        cashflow.drop(columns='frame'),
+        on=PERIOD_KEYS,
         how='outer',
     )
 
-    if balance is not None and not balance.empty:
+    balance = statements['balance_sheet']
+    if not balance.empty:
         merged = merged.merge(
             # `fp` already came from the flow statements and is not in the join.
-            balance.drop(columns=['fp', 'frame'], errors='ignore'),
+            balance.drop(columns=['fp', 'frame']),
             on=PIT_MERGE_KEYS,
             how='left',
         )
@@ -364,16 +314,8 @@ def _flag_latest(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# === Helpers === #
-
-
-def _value_columns(df: pd.DataFrame, statement) -> list:
-    return [name for name in statement.datapoint_names if name in df.columns]
-
-
 def _months_between(start: pd.Series, end: pd.Series) -> pd.Series:
     """Length of a period in whole months, null if either end is missing."""
-    months = ((end.dt.year - start.dt.year) * 12
-              + (end.dt.month - start.dt.month)
-              + (end.dt.day - start.dt.day) / 30).round(0)
-    return months.where(start.notna() & end.notna())
+    return ((end.dt.year - start.dt.year) * 12
+            + (end.dt.month - start.dt.month)
+            + (end.dt.day - start.dt.day) / 30).round(0)

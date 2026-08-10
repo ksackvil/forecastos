@@ -33,8 +33,6 @@ FACT_COLS = [
     'accn', 'fy', 'fp', 'form', 'filed', 'frame',
 ]
 
-DATE_COLS = ('start', 'end', 'filed')
-
 
 def read_facts(
     archive_path,
@@ -66,10 +64,7 @@ def read_facts(
 
     # Companies reporting none of the wanted tags contribute an empty frame,
     # whose all-null columns would otherwise decide the result's dtypes.
-    frames = [f for f in frames if not f.empty]
-    if not frames:
-        return _clean(pd.DataFrame(columns=FACT_COLS))
-
+    frames = [f for f in frames if not f.empty] or [pd.DataFrame(columns=FACT_COLS)]
     return _clean(pd.concat(frames, ignore_index=True))
 
 
@@ -88,21 +83,20 @@ def _read_member(
             f'{name} is not in the archive - that filer has no XBRL facts'
         ) from None
 
-    return _to_facts(json.loads(payload), tags, _member_cik(name))
+    return _to_facts(json.loads(payload), tags, _pad_cik(name))
+
+
+def _pad_cik(value) -> str:
+    """The digits of `value`, zero-padded to the 10 SEC keys filers by."""
+    digits = ''.join(c for c in str(value) if c.isdigit())
+    if not digits:
+        raise ValueError(f'not a cik: {value!r}')
+    return digits.zfill(10)
 
 
 def _member_name(cik) -> str:
     """Members are named by the padded CIK, e.g. 'CIK0000320193.json'."""
-    digits = ''.join(c for c in str(cik) if c.isdigit())
-    if not digits:
-        raise ValueError(f'not a cik: {cik!r}')
-    return f'CIK{digits.zfill(10)}.json'
-
-
-def _member_cik(name: str) -> str:
-    """The CIK a member is named for, padded."""
-    digits = ''.join(c for c in name if c.isdigit())
-    return digits.zfill(10)
+    return f'CIK{_pad_cik(cik)}.json'
 
 
 def _to_facts(company: dict, tags: frozenset, member_cik: str) -> pd.DataFrame:
@@ -149,7 +143,7 @@ def _to_facts(company: dict, tags: frozenset, member_cik: str) -> pd.DataFrame:
 
 def _clean(facts: pd.DataFrame) -> pd.DataFrame:
     """Type the columns once, here, rather than per statement downstream."""
-    for col in DATE_COLS:
+    for col in ('start', 'end', 'filed'):
         facts[col] = pd.to_datetime(facts[col], errors='coerce')
 
     facts['val'] = pd.to_numeric(facts['val'], errors='coerce')

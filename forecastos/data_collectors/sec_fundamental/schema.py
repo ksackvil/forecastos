@@ -17,23 +17,19 @@ per company.
 """
 
 import json
-import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 # Calculations name other datapoints by the column names the previous
-# implementation gave them, which carried this prefix. Stripped at compile time.
+# implementation gave them, which carried this prefix. Nothing else uses it.
 _CALC_TAG_PREFIX = 'fos_'
 
 # Statements measured at an instant rather than over a period. Keyed by `end`
 # alone; their values become start/end pairs.
 _PIT_STATEMENTS = frozenset({'balance_sheet', 'other'})
 
-_SCHEMA_FILES = {
-    'base_mappings': 'base_mappings.json',
-    'base_calculations': 'base_calculations.json',
-    'override_mappings': 'override_mappings.json',
-}
+_SCHEMA_NAMES = ('base_mappings', 'base_calculations', 'override_mappings')
 
 
 @dataclass(frozen=True)
@@ -61,10 +57,6 @@ class Alternative:
     terms: tuple
     allow_null_components: bool = True
 
-    @property
-    def tag_names(self) -> frozenset:
-        return frozenset(tag.name for term in self.terms for tag in term)
-
 
 @dataclass(frozen=True)
 class Datapoint:
@@ -72,10 +64,6 @@ class Datapoint:
 
     name: str
     alternatives: tuple
-
-    @property
-    def tag_names(self) -> frozenset:
-        return frozenset().union(*(a.tag_names for a in self.alternatives))
 
 
 @dataclass(frozen=True)
@@ -88,9 +76,9 @@ class StatementSchema:
         calculations: fallback datapoints derived from other columns, in
             dependency order - `total_liabilities` reads a column that
             `total_non_current_liabilities` writes, so order is load-bearing.
-        overrides: per-CIK alternatives tried ahead of the shared ones. Keyed
-            by CIK, which survives the ticker changes and delistings that would
-            break a ticker key.
+        overrides: per-CIK datapoints whose alternatives already carry the
+            shared ones as a fallback. Keyed by CIK, which survives the ticker
+            changes and delistings that would break a ticker key.
     """
 
     name: str
@@ -119,14 +107,9 @@ class StatementSchema:
 
     @property
     def datapoint_names(self) -> list:
-        """Output columns, mappings first, in the order the JSON declared.
-
-        Calculations are nearly always a fallback for an already-mapped
-        datapoint, but a calculation-only one is still an output column.
-        """
-        names = [dp.name for dp in self.mappings]
-        return names + [dp.name for dp in self.calculations
-                        if dp.name not in names]
+        """Output columns, mappings first, in the order the JSON declared."""
+        return list(dict.fromkeys(
+            dp.name for dp in self.mappings + self.calculations))
 
     @property
     def required_tags(self) -> frozenset:
@@ -134,55 +117,28 @@ class StatementSchema:
 
         Calculations are excluded - they read datapoint columns, not tags.
         """
-        tags = frozenset().union(
-            *(dp.tag_names for dp in self.mappings)) if self.mappings else frozenset()
-        for datapoints in self.overrides.values():
-            for dp in datapoints:
-                tags |= dp.tag_names
-        return tags
-
-    def alternatives_for(self, name: str, cik: str) -> tuple:
-        """Alternatives for one datapoint, with `cik`'s overrides tried first."""
-        base = next(
-            (dp.alternatives for dp in self.mappings if dp.name == name), ())
-        override = next(
-            (dp.alternatives for dp in self.overrides.get(cik, ())
-             if dp.name == name), ())
-        return override + base
+        datapoints = self.mappings + tuple(
+            dp for dps in self.overrides.values() for dp in dps)
+        return frozenset(
+            tag.name for dp in datapoints for alternative in dp.alternatives
+            for term in alternative.terms for tag in term)
 
 
-@dataclass(frozen=True)
-class Schema:
-    """The compiled schema for every statement."""
+def load_schema(schema_dir: str) -> tuple:
+    """Compile the JSON schema files in `schema_dir`, one entry per statement."""
+    mappings, calculations, overrides = (
+        json.loads((Path(schema_dir) / f'{name}.json').read_text())
+        for name in _SCHEMA_NAMES)
 
-    statements: tuple
+    return tuple(
+        _compile_statement(name, datapoints,
+                           calculations.get(name, {}), overrides.get(name, {}))
+        for name, datapoints in mappings.items())
 
-    @classmethod
-    def from_dir(cls, schema_dir: str) -> 'Schema':
-        """Compile the JSON schema files in `schema_dir`."""
-        raw = {}
-        for key, filename in _SCHEMA_FILES.items():
-            with open(os.path.join(schema_dir, filename)) as f:
-                raw[key] = json.load(f)
 
-        names = list(raw['base_mappings'])
-        return cls(statements=tuple(
-            _compile_statement(
-                name,
-                raw['base_mappings'].get(name, {}),
-                raw['base_calculations'].get(name, {}),
-                raw['override_mappings'].get(name, {}),
-            )
-            for name in names
-        ))
-
-    @property
-    def required_tags(self) -> frozenset:
-        """Every tag any statement could read, which is what the reader keeps."""
-        return frozenset().union(*(s.required_tags for s in self.statements))
-
-    def __iter__(self):
-        return iter(self.statements)
+def required_tags(statements: tuple) -> frozenset:
+    """Every tag any statement could read, which is what the reader keeps."""
+    return frozenset().union(*(s.required_tags for s in statements))
 
 
 def _compile_statement(
@@ -191,44 +147,37 @@ def _compile_statement(
     calculations: dict,
     overrides: dict,
 ) -> StatementSchema:
+    compiled = tuple(
+        _compile_datapoint(dp_name, methods)
+        for dp_name, methods in mappings.items())
+    base = {dp.name: dp.alternatives for dp in compiled}
+
     return StatementSchema(
         name=name,
-        mappings=tuple(
-            _compile_datapoint(dp_name, methods)
-            for dp_name, methods in mappings.items()
-        ),
+        mappings=compiled,
         calculations=tuple(
-            _compile_datapoint(dp_name, methods, is_calculation=True)
-            for dp_name, methods in calculations.items()
-        ),
+            _compile_datapoint(dp_name, methods)
+            for dp_name, methods in calculations.items()),
         overrides={
+            # The shared alternatives are appended here rather than consulted
+            # at extraction time, so an override still falls back to them.
             cik: tuple(
-                _compile_datapoint(dp_name, methods)
-                for dp_name, methods in datapoints.items()
-            )
+                _compile_datapoint(dp_name, methods,
+                                   fallback=base.get(dp_name, ()))
+                for dp_name, methods in datapoints.items())
             for cik, datapoints in overrides.items()
         },
     )
 
 
-def _compile_datapoint(
-    name: str,
-    methods: list,
-    is_calculation: bool = False,
-) -> Datapoint:
-    """Compile one datapoint.
-
-    `is_calculation` only affects how tag names are read - a calculation names
-    datapoint columns, under the prefix the previous implementation used.
-    """
+def _compile_datapoint(name: str, methods: list, fallback: tuple = ()) -> Datapoint:
     return Datapoint(
         name=name,
-        alternatives=tuple(
-            _compile_alternative(m, is_calculation) for m in methods),
+        alternatives=tuple(_compile_alternative(m) for m in methods) + fallback,
     )
 
 
-def _compile_alternative(method: dict, is_calculation: bool) -> Alternative:
+def _compile_alternative(method: dict) -> Alternative:
     """One method dict as a sum of terms.
 
     `raw` carries its tag inline and becomes one term of one tag;
@@ -236,12 +185,10 @@ def _compile_alternative(method: dict, is_calculation: bool) -> Alternative:
     inner dicts are themselves `raw`.
     """
     if 'tag_li' in method:
-        terms = tuple(
-            tuple(_compile_tag(t, is_calculation) for t in term)
-            for term in method['tag_li']
-        )
+        terms = tuple(tuple(_compile_tag(t) for t in term)
+                      for term in method['tag_li'])
     else:
-        terms = ((_compile_tag(method, is_calculation),),)
+        terms = ((_compile_tag(method),),)
 
     return Alternative(
         terms=terms,
@@ -250,13 +197,9 @@ def _compile_alternative(method: dict, is_calculation: bool) -> Alternative:
     )
 
 
-def _compile_tag(method: dict, is_calculation: bool) -> Tag:
-    tag = method['tag']
-    if is_calculation and tag.startswith(_CALC_TAG_PREFIX):
-        tag = tag[len(_CALC_TAG_PREFIX):]
-
+def _compile_tag(method: dict) -> Tag:
     return Tag(
-        name=tag,
+        name=method['tag'].removeprefix(_CALC_TAG_PREFIX),
         multiplier=float(method.get('multiplier', 1.0)),
         ignore_if_zero=bool(method.get('ignore_if_zero', False)),
         default=method.get('default'),

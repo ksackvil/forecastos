@@ -28,16 +28,13 @@ def extract(facts: pd.DataFrame, statement) -> pd.DataFrame:
         The statement's key columns, SEC's `frame` label where it assigned one,
         and a column per datapoint. Rows more than half null are dropped.
     """
+    names = statement.datapoint_names
     wide = _pivot(facts, statement)
     if wide.empty:
-        return wide.reindex(
-            columns=list(wide.columns) + statement.datapoint_names)
-
-    n = len(wide)
+        return wide.reindex(columns=list(wide.columns) + names)
 
     for datapoint in statement.mappings:
-        wide[datapoint.name] = _datapoint_values(
-            wide, datapoint.alternatives, n)
+        wide[datapoint.name] = _datapoint_values(wide, datapoint.alternatives)
 
     _apply_overrides(wide, statement)
 
@@ -45,13 +42,12 @@ def extract(facts: pd.DataFrame, statement) -> pd.DataFrame:
     # fill where the mapped value was null. Declaration order matters - one can
     # read a column another writes.
     for datapoint in statement.calculations:
-        if datapoint.name not in wide.columns:
-            wide[datapoint.name] = np.nan
-        mapped = wide[datapoint.name].to_numpy(dtype='float64', copy=True)
-        derived = _datapoint_values(wide, datapoint.alternatives, n)
-        wide[datapoint.name] = np.where(np.isnan(mapped), derived, mapped)
+        derived = pd.Series(
+            _datapoint_values(wide, datapoint.alternatives), index=wide.index)
+        wide[datapoint.name] = (wide[datapoint.name].fillna(derived)
+                                if datapoint.name in wide.columns else derived)
 
-    return _drop_sparse_rows(wide, statement)
+    return wide[wide[names].isna().mean(axis=1) <= MAX_NULL_SHARE]
 
 
 def _pivot(facts: pd.DataFrame, statement) -> pd.DataFrame:
@@ -67,74 +63,66 @@ def _pivot(facts: pd.DataFrame, statement) -> pd.DataFrame:
     if rows.empty:
         return pd.DataFrame(columns=keys + ['frame'])
 
-    wide = rows.pivot(index=keys, columns='tag', values='val')
-    wide = wide.rename_axis(None, axis=1)
-
-    # `frame` belongs to the period, not to any one tag, so it is collapsed
-    # alongside the pivot instead of becoming a column in it.
-    labels = rows.groupby(keys, sort=False)['frame'].first()
-
-    return wide.join(labels).reset_index()
+    return (rows.pivot(index=keys, columns='tag', values='val')
+            .rename_axis(None, axis=1)
+            # `frame` belongs to the period, not to any one tag, so it is
+            # collapsed alongside the pivot instead of becoming a column in it.
+            .join(rows.groupby(keys, sort=False)['frame'].first())
+            .reset_index())
 
 
 def _apply_overrides(wide: pd.DataFrame, statement) -> None:
     """Recompute the few CIKs whose filings need their own tag order.
 
-    Overrides are tried ahead of the shared mappings, not in place of them.
-    Only the overridden company's rows are touched - a few thousand out of
-    millions, cheap enough to redo rather than thread through the pass above.
+    Each override already carries the shared alternatives as a fallback (see
+    `_compile_statement`). Only the overridden company's rows are touched - a
+    few thousand out of millions, cheap enough to redo rather than thread
+    through the pass above.
     """
     for cik, datapoints in statement.overrides.items():
         mask = (wide['cik'] == cik).to_numpy()
-        if not mask.any():
-            continue
-
         rows = wide.loc[mask]
         for datapoint in datapoints:
-            alternatives = statement.alternatives_for(datapoint.name, cik)
             wide.loc[mask, datapoint.name] = _datapoint_values(
-                rows, alternatives, len(rows))
+                rows, datapoint.alternatives)
 
 
-def _datapoint_values(frame: pd.DataFrame, alternatives, n: int) -> np.ndarray:
+def _datapoint_values(frame: pd.DataFrame, alternatives) -> np.ndarray:
     """First alternative that yields a value, per row."""
-    out = np.full(n, np.nan)
+    out = np.full(len(frame), np.nan)
     for alternative in alternatives:
+        missing = np.isnan(out)
         # Every row filled - later alternatives have nothing left to do.
-        if not np.isnan(out).any():
+        if not missing.any():
             break
-        out = np.where(np.isnan(out), _alternative_values(
-            frame, alternative, n), out)
+        out = np.where(missing, _alternative_values(frame, alternative), out)
     return out
 
 
-def _alternative_values(frame: pd.DataFrame, alternative, n: int) -> np.ndarray:
+def _alternative_values(frame: pd.DataFrame, alternative) -> np.ndarray:
     """Sum of the alternative's terms, or null if the sum cannot stand."""
-    terms = np.vstack([_term_values(frame, t, n) for t in alternative.terms])
-    missing = np.isnan(terms)
+    terms = np.vstack([_term_values(frame, t) for t in alternative.terms])
 
-    if alternative.allow_null_components:
-        # An empty term contributes nothing; the sum fails only if all are.
-        failed = missing.all(axis=0)
-    else:
-        # Every component must be present - no partial sums.
-        failed = missing.any(axis=0)
+    if not alternative.allow_null_components:
+        # Every component must be present - no partial sums, which is what
+        # summing straight through gives us.
+        return terms.sum(axis=0)
 
-    return np.where(failed, np.nan, np.nansum(terms, axis=0))
+    # An empty term contributes nothing; the sum fails only if all are.
+    return np.where(np.isnan(terms).all(axis=0), np.nan, np.nansum(terms, axis=0))
 
 
-def _term_values(frame: pd.DataFrame, tags, n: int) -> np.ndarray:
+def _term_values(frame: pd.DataFrame, tags) -> np.ndarray:
     """First of `tags` that the filing reported, per row."""
-    out = np.full(n, np.nan)
+    out = np.full(len(frame), np.nan)
 
     for tag in tags:
         if tag.name in frame.columns:
-            col = frame[tag.name].to_numpy(dtype='float64', copy=True)
-            col *= tag.multiplier
+            col = frame[tag.name].to_numpy(dtype='float64') * tag.multiplier
         else:
             # A company never using this tag is ordinary - that is what the
             # next tag in the group is for.
-            col = np.full(n, np.nan)
+            col = np.full(len(frame), np.nan)
 
         if tag.default is not None:
             col = np.where(np.isnan(col), tag.default, col)
@@ -147,13 +135,3 @@ def _term_values(frame: pd.DataFrame, tags, n: int) -> np.ndarray:
         out = np.where(np.isnan(out), col, out)
 
     return out
-
-
-def _drop_sparse_rows(wide: pd.DataFrame, statement) -> pd.DataFrame:
-    """Drop rows where more than half the datapoints came back null."""
-    names = [c for c in statement.datapoint_names if c in wide.columns]
-    if not names:
-        return wide
-
-    null_share = wide[names].isna().sum(axis=1) / len(names)
-    return wide[null_share <= MAX_NULL_SHARE]
