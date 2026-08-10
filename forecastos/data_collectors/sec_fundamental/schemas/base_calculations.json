@@ -2,66 +2,25 @@
   "income_statement": {
     "gross_revenue": [
       {
-        "tag_li": [
-          [
-            {
-              "tag": "fos_revenue",
-              "method": "raw"
-            }
-          ],
-          [
-            {
-              "tag": "fos_cogs",
-              "method": "raw",
-              "multiplier": -1
-            }
-          ]
-        ],
-        "method": "sum_first_tag_found_per_sublist",
-        "allow_null_components": false
+        "sum": ["revenue", {"tag": "cogs", "multiplier": -1}],
+        "require_all_terms": true
       }
     ]
   },
   "balance_sheet": {
     "total_non_current_liabilities": [
       {
-        "tag_li": [
-          [
-            {
-              "tag": "fos_total_liabilities",
-              "method": "raw"
-            }
-          ],
-          [
-            {
-              "tag": "fos_total_current_liabilities",
-              "method": "raw",
-              "multiplier": -1
-            }
-          ]
+        "sum": [
+          "total_liabilities",
+          {"tag": "total_current_liabilities", "multiplier": -1}
         ],
-        "method": "sum_first_tag_found_per_sublist",
-        "allow_null_components": false
+        "require_all_terms": true
       }
     ],
     "total_liabilities": [
       {
-        "tag_li": [
-          [
-            {
-              "tag": "fos_total_current_liabilities",
-              "method": "raw"
-            }
-          ],
-          [
-            {
-              "tag": "fos_total_non_current_liabilities",
-              "method": "raw"
-            }
-          ]
-        ],
-        "method": "sum_first_tag_found_per_sublist",
-        "allow_null_components": false
+        "sum": ["total_current_liabilities", "total_non_current_liabilities"],
+        "require_all_terms": true
       }
     ]
   }

@@ -33,19 +33,19 @@ def extract(facts: pd.DataFrame, statement) -> pd.DataFrame:
     if wide.empty:
         return wide.reindex(columns=list(wide.columns) + names)
 
-    for datapoint in statement.mappings:
-        wide[datapoint.name] = _datapoint_values(wide, datapoint.alternatives)
+    for datapoint, sums in statement.mappings.items():
+        wide[datapoint] = _datapoint_values(wide, sums)
 
     _apply_overrides(wide, statement)
 
     # Calculations derive a datapoint from other datapoint columns and only
     # fill where the mapped value was null. Declaration order matters - one can
     # read a column another writes.
-    for datapoint in statement.calculations:
+    for datapoint, sums in statement.calculations.items():
         derived = pd.Series(
-            _datapoint_values(wide, datapoint.alternatives), index=wide.index)
-        wide[datapoint.name] = (wide[datapoint.name].fillna(derived)
-                                if datapoint.name in wide.columns else derived)
+            _datapoint_values(wide, sums), index=wide.index)
+        wide[datapoint] = (wide[datapoint].fillna(derived)
+                           if datapoint in wide.columns else derived)
 
     return wide[wide[names].isna().mean(axis=1) <= MAX_NULL_SHARE]
 
@@ -74,7 +74,7 @@ def _pivot(facts: pd.DataFrame, statement) -> pd.DataFrame:
 def _apply_overrides(wide: pd.DataFrame, statement) -> None:
     """Recompute the few CIKs whose filings need their own tag order.
 
-    Each override already carries the shared alternatives as a fallback (see
+    Each override already carries the shared sums as a fallback (see
     `_compile_statement`). Only the overridden company's rows are touched - a
     few thousand out of millions, cheap enough to redo rather than thread
     through the pass above.
@@ -82,33 +82,31 @@ def _apply_overrides(wide: pd.DataFrame, statement) -> None:
     for cik, datapoints in statement.overrides.items():
         mask = (wide['cik'] == cik).to_numpy()
         rows = wide.loc[mask]
-        for datapoint in datapoints:
-            wide.loc[mask, datapoint.name] = _datapoint_values(
-                rows, datapoint.alternatives)
+        for datapoint, sums in datapoints.items():
+            wide.loc[mask, datapoint] = _datapoint_values(rows, sums)
 
 
-def _datapoint_values(frame: pd.DataFrame, alternatives) -> np.ndarray:
-    """First alternative that yields a value, per row."""
+def _datapoint_values(frame: pd.DataFrame, sums) -> np.ndarray:
+    """First sum that yields a value, per row."""
     out = np.full(len(frame), np.nan)
-    for alternative in alternatives:
+    for sum_ in sums:
         missing = np.isnan(out)
-        # Every row filled - later alternatives have nothing left to do.
+        # Every row filled - later sums have nothing left to do.
         if not missing.any():
             break
-        out = np.where(missing, _alternative_values(frame, alternative), out)
+        out = np.where(missing, _sum_values(frame, sum_), out)
     return out
 
 
-def _alternative_values(frame: pd.DataFrame, alternative) -> np.ndarray:
-    """Sum of the alternative's terms, or null if the sum cannot stand."""
-    terms = np.vstack([_term_values(frame, t) for t in alternative.terms])
+def _sum_values(frame: pd.DataFrame, sum_) -> np.ndarray:
+    """Total of the sum's terms, or null where the total cannot stand."""
+    terms = np.vstack([_term_values(frame, t) for t in sum_.terms])
 
-    if not alternative.allow_null_components:
-        # Every component must be present - no partial sums, which is what
-        # summing straight through gives us.
+    if sum_.require_all_terms:
+        # A missing term propagates through the total, so no partial sums.
         return terms.sum(axis=0)
 
-    # An empty term contributes nothing; the sum fails only if all are.
+    # A missing term contributes nothing; the total fails only if all are.
     return np.where(np.isnan(terms).all(axis=0), np.nan, np.nansum(terms, axis=0))
 
 

@@ -1,15 +1,16 @@
 """The extraction schema, compiled into a shape the extractor can vectorize.
 
-The JSON describes each datapoint as an ordered list of extraction methods, of
-which there are two: `raw` names one XBRL tag, and
-`sum_first_tag_found_per_sublist` names tag groups and sums one value out of
-each. Both compile to the same structure:
+The JSON describes each datapoint as an ordered list of sums, written either as
+a bare tag name or as `{"sum": [...]}` over a list of terms:
 
-    datapoint   = first non-null of its alternatives
-    alternative = sum of its terms, each term the first tag the filing reported
+    datapoint = first non-null of its sums
+    sum       = total of its terms, each term the first tag the filing reported
 
-`raw` is the degenerate case - one term, one tag - so the extractor can
-evaluate any datapoint with the same code, over whole columns.
+Every level collapses to a bare tag name when there is no choice to express: a
+one-term sum is written as the tag itself, as is a term with only one tag. A
+tag is spelled out as a dict only when it carries a modifier. So the extractor
+evaluates any datapoint with the same code, over whole columns, while the JSON
+stays as short as what it has to say.
 
 Compiling also answers once which tags the schema can reference - the set the
 reader filters the archive down to, ~150 against a median of ~270 us-gaap tags
@@ -17,19 +18,13 @@ per company.
 """
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-
-# Calculations name other datapoints by the column names the previous
-# implementation gave them, which carried this prefix. Nothing else uses it.
-_CALC_TAG_PREFIX = 'fos_'
 
 # Statements measured at an instant rather than over a period. Keyed by `end`
 # alone; their values become start/end pairs.
 _PIT_STATEMENTS = frozenset({'balance_sheet', 'other'})
-
-_SCHEMA_NAMES = ('base_mappings', 'base_calculations', 'override_mappings')
 
 
 @dataclass(frozen=True)
@@ -43,48 +38,43 @@ class Tag:
 
 
 @dataclass(frozen=True)
-class Alternative:
-    """Terms summed together to produce one candidate value.
+class Sum:
+    """Terms added together to produce one candidate value.
 
     Args:
-        terms: summed. Each is a tuple of `Tag`s tried in order, the first the
-            filing reported winning. One term of one tag is the `raw` case.
-        allow_null_components: whether a term that matched nothing counts as
-            zero. False fails the whole alternative instead, which keeps a sum
-            like `total_liabilities` off a row where only one half was found.
+        terms: added. Each is a tuple of `Tag`s tried in order, the first the
+            filing reported winning. One term of one tag is the bare-tag case.
+        require_all_terms: fail the whole sum where any term matched nothing,
+            which keeps a total like `total_liabilities` off a row where only
+            one half was found. Otherwise a missing term counts as zero.
     """
 
     terms: tuple
-    allow_null_components: bool = True
-
-
-@dataclass(frozen=True)
-class Datapoint:
-    """One output column: alternatives tried in order, first non-null wins."""
-
-    name: str
-    alternatives: tuple
+    require_all_terms: bool = False
 
 
 @dataclass(frozen=True)
 class StatementSchema:
     """Everything needed to build one statement.
 
+    A datapoint is one output column, and maps to the sums that produce it -
+    tried in order, first non-null wins.
+
     Args:
         name: statement name, also the key used against the JSON files.
-        mappings: datapoints read from XBRL tags.
-        calculations: fallback datapoints derived from other columns, in
+        mappings: datapoint -> sums read from XBRL tags.
+        calculations: datapoint -> sums derived from other columns, in
             dependency order - `total_liabilities` reads a column that
             `total_non_current_liabilities` writes, so order is load-bearing.
-        overrides: per-CIK datapoints whose alternatives already carry the
-            shared ones as a fallback. Keyed by CIK, which survives the ticker
+        overrides: cik -> datapoint -> sums, with the shared ones already
+            appended as a fallback. Keyed by CIK, which survives the ticker
             changes and delistings that would break a ticker key.
     """
 
     name: str
-    mappings: tuple
-    calculations: tuple
-    overrides: dict = field(default_factory=dict)
+    mappings: dict
+    calculations: dict
+    overrides: dict
 
     @property
     def is_pit(self) -> bool:
@@ -108,8 +98,7 @@ class StatementSchema:
     @property
     def datapoint_names(self) -> list:
         """Output columns, mappings first, in the order the JSON declared."""
-        return list(dict.fromkeys(
-            dp.name for dp in self.mappings + self.calculations))
+        return list(dict.fromkeys([*self.mappings, *self.calculations]))
 
     @property
     def required_tags(self) -> frozenset:
@@ -117,18 +106,20 @@ class StatementSchema:
 
         Calculations are excluded - they read datapoint columns, not tags.
         """
-        datapoints = self.mappings + tuple(
-            dp for dps in self.overrides.values() for dp in dps)
         return frozenset(
-            tag.name for dp in datapoints for alternative in dp.alternatives
-            for term in alternative.terms for tag in term)
+            tag.name
+            for datapoints in (self.mappings, *self.overrides.values())
+            for sums in datapoints.values()
+            for sum_ in sums
+            for term in sum_.terms
+            for tag in term)
 
 
-def load_schema(schema_dir: str) -> tuple:
+def load_schema(schema_dir) -> tuple:
     """Compile the JSON schema files in `schema_dir`, one entry per statement."""
     mappings, calculations, overrides = (
         json.loads((Path(schema_dir) / f'{name}.json').read_text())
-        for name in _SCHEMA_NAMES)
+        for name in ('base_mappings', 'base_calculations', 'override_mappings'))
 
     return tuple(
         _compile_statement(name, datapoints,
@@ -147,60 +138,61 @@ def _compile_statement(
     calculations: dict,
     overrides: dict,
 ) -> StatementSchema:
-    compiled = tuple(
-        _compile_datapoint(dp_name, methods)
-        for dp_name, methods in mappings.items())
-    base = {dp.name: dp.alternatives for dp in compiled}
+    compiled = {dp: _compile_datapoint(entries)
+                for dp, entries in mappings.items()}
 
     return StatementSchema(
         name=name,
         mappings=compiled,
-        calculations=tuple(
-            _compile_datapoint(dp_name, methods)
-            for dp_name, methods in calculations.items()),
+        calculations={dp: _compile_datapoint(entries)
+                      for dp, entries in calculations.items()},
         overrides={
-            # The shared alternatives are appended here rather than consulted
-            # at extraction time, so an override still falls back to them.
-            cik: tuple(
-                _compile_datapoint(dp_name, methods,
-                                   fallback=base.get(dp_name, ()))
-                for dp_name, methods in datapoints.items())
+            # The shared sums are appended here rather than consulted at
+            # extraction time, so an override still falls back to them.
+            cik: {dp: _compile_datapoint(entries) + compiled.get(dp, ())
+                  for dp, entries in datapoints.items()}
             for cik, datapoints in overrides.items()
         },
     )
 
 
-def _compile_datapoint(name: str, methods: list, fallback: tuple = ()) -> Datapoint:
-    return Datapoint(
-        name=name,
-        alternatives=tuple(_compile_alternative(m) for m in methods) + fallback,
-    )
+def _compile_datapoint(entries: list) -> tuple:
+    """The sums one datapoint's JSON entries compile to, in order."""
+    return tuple(_compile_sum(e) for e in entries)
 
 
-def _compile_alternative(method: dict) -> Alternative:
-    """One method dict as a sum of terms.
+def _compile_sum(spec) -> Sum:
+    """One JSON entry as a sum of terms.
 
-    `raw` carries its tag inline and becomes one term of one tag;
-    `sum_first_tag_found_per_sublist` carries `tag_li`, a list of terms whose
-    inner dicts are themselves `raw`.
+    `{"sum": [...]}` carries a list of terms; anything else is a single term.
     """
-    if 'tag_li' in method:
-        terms = tuple(tuple(_compile_tag(t) for t in term)
-                      for term in method['tag_li'])
-    else:
-        terms = ((_compile_tag(method),),)
+    if isinstance(spec, dict) and 'sum' in spec:
+        terms = spec['sum']
+        # A bare string here would otherwise compile one Tag per character.
+        if not isinstance(terms, list) or not terms:
+            raise ValueError(f'"sum" takes a non-empty list of terms: {spec!r}')
+        return Sum(
+            terms=tuple(_compile_term(t) for t in terms),
+            require_all_terms=spec.get('require_all_terms', False),
+        )
+    return Sum(terms=(_compile_term(spec),))
 
-    return Alternative(
-        terms=terms,
-        # Absent means permissive, as the previous implementation read it.
-        allow_null_components=method.get('allow_null_components', True),
-    )
+
+def _compile_term(spec) -> tuple:
+    """One term: the tags to try, or a single tag where there is no choice."""
+    if isinstance(spec, list):
+        return tuple(_compile_tag(t) for t in spec)
+    return (_compile_tag(spec),)
 
 
-def _compile_tag(method: dict) -> Tag:
+def _compile_tag(spec) -> Tag:
+    """One tag, as a bare name or as a dict carrying its modifiers."""
+    if isinstance(spec, str):
+        spec = {'tag': spec}
+
     return Tag(
-        name=method['tag'].removeprefix(_CALC_TAG_PREFIX),
-        multiplier=float(method.get('multiplier', 1.0)),
-        ignore_if_zero=bool(method.get('ignore_if_zero', False)),
-        default=method.get('default'),
+        name=spec['tag'],
+        multiplier=float(spec.get('multiplier', 1.0)),
+        ignore_if_zero=bool(spec.get('ignore_if_zero', False)),
+        default=spec.get('default'),
     )
