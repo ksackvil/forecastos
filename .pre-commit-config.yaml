@@ -8,3 +8,11 @@ repos:
         verbose: true
         pass_filenames: false
         stages: [pre-commit]
+      - id: iex-price-smoke-test
+        name: IEX price collector smoke test
+        entry: poetry run pytest tests/iex_price_smoke_test.py -q
+        language: system
+        verbose: true
+        pass_filenames: false
+        files: ^(forecastos/data/|tests/iex_price_smoke_test\.py)
+        stages: [pre-commit]
