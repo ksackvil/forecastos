@@ -17,4 +17,4 @@ from forecastos.provider import *
 from forecastos.util import *
 
 import forecastos.portfolio
-import forecastos.data_collectors
+import forecastos.data

@@ -5,25 +5,22 @@ from ..downloader import FileDownloader, TIMEOUT_SEC
 from .tops_trade_scanner import scan_trades
 
 HIST_URL = 'https://iextrading.com/api/1.0/hist'
-DEFAULT_DATA_DIR = str(Path.cwd() / 'data')
 
 # Enough to identify and download a capture; the API returns more than this.
 CATALOG_COLS = ['date', 'feed', 'version', 'protocol', 'size_bytes', 'link']
 
 
-class IEXPriceCollector:
-    """Daily OHLCV bars built from IEX's public TOPS capture archive.
+class IEXPrice:
+    """Daily OHLCV bars built from IEX's public TOPS capture archive."""
 
-    Args:
-        data_dir: where capture files are downloaded. Defaults to ./data, resolved
-            against the working directory as of import.
-        cleanup: If True, delete each capture file once it has been parsed.
-    """
-
-    def __init__(self, data_dir: str = DEFAULT_DATA_DIR, cleanup: bool = True):
-        self.downloader = FileDownloader(data_dir, cleanup)
-
-    def collect(self, start: str = None, end: str = None) -> pd.DataFrame:
+    @classmethod
+    def get_df(
+        cls,
+        start: str = None,
+        end: str = None,
+        data_dir: str = None,
+        cleanup: bool = True,
+    ) -> pd.DataFrame:
         """Daily OHLCV bars for every trading session in [start, end].
 
         Downloads one capture per session, so a wide range is a long job.
@@ -36,6 +33,9 @@ class IEXPriceCollector:
                 means no lower bound - the archive reaches back to 2016.
             end: latest session, same format. None means no upper bound.
                 Both bounds are inclusive.
+            data_dir: where capture files are downloaded. Defaults to ./data,
+                resolved against the working directory as of this call.
+            cleanup: If True, delete each capture file once it has been parsed.
 
         Returns:
             One row per symbol per session: date, symbol, open, high, low,
@@ -44,22 +44,22 @@ class IEXPriceCollector:
         Raises:
             ValueError: no session falls in the range.
         """
-        catalog = self.fetch_tops_catalog(start, end)
+        catalog = cls.fetch_tops_catalog(start, end)
         if catalog.empty:
             raise ValueError(f'no TOPS sessions between {start} and {end}')
 
+        downloader = FileDownloader(data_dir or Path.cwd() / 'data', cleanup)
+
         data = []
         for entry in catalog.to_dict('records'):
-            with self.downloader.fetch(
-                entry['link'], _capture_filename(entry)
-            ) as path:
+            with downloader.fetch(entry['link'], _capture_filename(entry)) as path:
                 trades = scan_trades(path, entry['version'], entry['date'])
                 data.append(_to_daily_bars(trades, entry['date']))
 
         return pd.concat(data, ignore_index=True)
 
-    @staticmethod
-    def fetch_tops_catalog(start: str = None, end: str = None) -> pd.DataFrame:
+    @classmethod
+    def fetch_tops_catalog(cls, start: str = None, end: str = None) -> pd.DataFrame:
         resp = requests.get(HIST_URL, timeout=TIMEOUT_SEC)
         resp.raise_for_status()
 
