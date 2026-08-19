@@ -10,8 +10,6 @@ from .facts import read_facts
 from .normalize import merge_statements, normalize
 from .schema import load_schema, required_tags
 
-DEFAULT_DATA_DIR = str(Path.cwd() / 'data')
-
 ARCHIVE_FILENAME = 'companyfacts.zip'
 
 COMPANY_FACTS_URL = 'https://www.sec.gov/Archives/edgar/daily-index/xbrl/companyfacts.zip'
@@ -26,36 +24,34 @@ class SECFundamental:
     arrived in. Never by ticker - tickers move between share classes, get
     reused after a delisting, and are blanked on takeover, so they would
     mis-key exactly the companies that make a backtest honest.
-
-    Args:
-        user_agent: sent to SEC, which rejects unidentified clients. Contact
-            details, e.g. 'Example Corp info@example.com'.
-        data_dir: where the archive is downloaded. Defaults to ./data.
-        cleanup: delete the 1.2 GB archive when done. SEC rebuilds it nightly,
-            so keeping it only helps across runs on the same day.
     """
 
-    def __init__(
-        self,
+    @classmethod
+    def get_df(
+        cls,
         user_agent: str,
-        data_dir: str = DEFAULT_DATA_DIR,
+        ciks: list = None,
+        data_dir: str = None,
         cleanup: bool = True,
-    ):
-        self.downloader = FileDownloader(
-            data_dir, cleanup, {'User-Agent': user_agent})
-        self.schema = load_schema(SCHEMA_DIR)
-
-    def collect(self, ciks: list = None) -> pd.DataFrame:
+    ) -> pd.DataFrame:
         """Fundamental statements, one row per company per period per filing.
 
-        The whole archive takes a few minutes. To go wider, shard `ciks` across
-        separate jobs - every stage shards cleanly by company.
+        Downloads the 1.2 GB archive, so the whole thing takes a few minutes.
+        To go wider, shard `ciks` across separate jobs - every stage shards
+        cleanly by company.
 
         Args:
+            user_agent: sent to SEC, which rejects unidentified clients.
+                Contact details, e.g. 'Example Corp info@example.com'.
             ciks: any form carrying the digits - 320193, '0000320193' and
                 'CIK0000320193' all name Apple. None collects every filer,
                 including companies since acquired or delisted, which is what
                 you want for anything historical.
+            data_dir: where the archive is downloaded. Defaults to ./data,
+                resolved against the working directory as of this call.
+            cleanup: If True, delete the archive once it has been read. SEC
+                rebuilds it nightly, so keeping it only helps across runs on
+                the same day.
 
         Returns:
             One row per company-period-filing: cik, accn, fy, fp, form, start,
@@ -74,29 +70,41 @@ class SECFundamental:
         Raises:
             ValueError: a named CIK has no member in the archive.
         """
-        statements = self.collect_statements(ciks=ciks)
+        statements = cls.get_statements(
+            user_agent, ciks=ciks, data_dir=data_dir, cleanup=cleanup)
         return merge_statements(statements)
 
-    def collect_statements(self, ciks: list = None) -> dict:
-        """The statements `collect` merges, before they are joined.
+    @classmethod
+    def get_statements(
+        cls,
+        user_agent: str,
+        ciks: list = None,
+        data_dir: str = None,
+        cleanup: bool = True,
+    ) -> dict:
+        """The statements `get_df` merges, before they are joined.
 
         Useful for one statement on its own, or to see figures the merge drops
         - a balance sheet whose period has no income statement has no row to
         attach to.
 
         Args:
-            ciks: as `collect`.
+            user_agent, ciks, data_dir, cleanup: as `get_df`.
 
         Returns:
             Normalized frames keyed by statement name: income_statement,
             cashflow_statement, balance_sheet, other.
         """
-        with self.downloader.fetch(COMPANY_FACTS_URL, ARCHIVE_FILENAME) as path:
+        downloader = FileDownloader(
+            data_dir or Path.cwd() / 'data', cleanup, {'User-Agent': user_agent})
+        schema = load_schema(SCHEMA_DIR)
+
+        with downloader.fetch(COMPANY_FACTS_URL, ARCHIVE_FILENAME) as path:
             print('reading facts')
-            facts = read_facts(path, required_tags(self.schema), ciks=ciks)
+            facts = read_facts(path, required_tags(schema), ciks=ciks)
 
         statements = {}
-        for statement in self.schema:
+        for statement in schema:
             print(f'building {statement.name}')
             statements[statement.name] = normalize(
                 extract(facts, statement), statement)
