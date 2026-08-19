@@ -14,5 +14,13 @@ repos:
         language: system
         verbose: true
         pass_filenames: false
-        files: ^(forecastos/data/|tests/iex_price_smoke_test\.py)
+        files: ^(forecastos/data/(downloader\.py|iex_price/)|tests/iex_price_smoke_test\.py)
+        stages: [pre-commit]
+      - id: sec-fundamental-smoke-test
+        name: SEC fundamental collector smoke test
+        entry: poetry run pytest tests/sec_fundamental -q
+        language: system
+        verbose: true
+        pass_filenames: false
+        files: ^(forecastos/data/(downloader\.py|sec_fundamental/)|tests/sec_fundamental/)
         stages: [pre-commit]

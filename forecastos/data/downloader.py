@@ -15,12 +15,16 @@ class FileDownloader:
         cleanup: whether `fetch` deletes the file once the caller is done with
             it. A capture can be tens of GB, so re-fetching is expensive - pass
             False unless the file is genuinely disposable.
+        headers: sent with every request. Some hosts - SEC among them - reject
+            an unidentified client outright, so the caller supplies whatever
+            that host expects.
     """
 
-    def __init__(self, data_dir: str, cleanup: bool):
+    def __init__(self, data_dir: str, cleanup: bool, headers: dict = None):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.cleanup = cleanup
+        self.headers = headers
 
     def download(self, url: str, filename: str) -> Path:
         """Return the local path for `url`, downloading it only if missing.
@@ -52,7 +56,9 @@ class FileDownloader:
 
     def _stream(self, url: str, path: Path) -> None:
         """Write the response body to `path` a chunk at a time."""
-        with requests.get(url, stream=True, timeout=TIMEOUT_SEC) as response:
+        with requests.get(
+            url, stream=True, timeout=TIMEOUT_SEC, headers=self.headers
+        ) as response:
             response.raise_for_status()
             total = int(response.headers.get("content-length", 0))
             done = 0
