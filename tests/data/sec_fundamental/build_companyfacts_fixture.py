@@ -1,12 +1,12 @@
 """Rebuild `companyfacts_fixture.zip`, the archive the SEC smoke tests run over.
 
-Members are trimmed to the tags and years the tests need, but nested and named
-the way SEC ships the real archive, so the tests run the same `read_facts` zip
-path production does.
+Members carry only the tags and years the tests read, but are nested and named
+the way SEC ships the real archive, so the tests run the same `read_facts` code
+production does.
 
     python build_companyfacts_fixture.py 'Name you@example.com'
 
-SEC 403s an unidentified client, hence the User-Agent.
+The User-Agent is required - SEC 403s a client it cannot identify.
 """
 
 import json
@@ -23,10 +23,10 @@ from forecastos.data.sec_fundamental.schema import load_schema, required_tags
 
 OUT_PATH = Path(__file__).parent / 'companyfacts_fixture.zip'
 
-# Per company, unlike the bulk zip `collector.COMPANY_FACTS_URL` points at.
+# One company per call, unlike the bulk zip `collector.COMPANY_FACTS_URL`.
 COMPANY_FACTS_API_URL = 'https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json'
 
-# Universe of companies to include in fixture
+# The test universe. Keyed by CIK, since a ticker can move to another filer.
 CIKS = {
     '0000320193': 'AAPL',
     '0001045810': 'NVDA',
@@ -42,8 +42,8 @@ CIKS = {
     '0001403161': 'V',
 }
 
-# 2024 is the floor: tighter and some filers lose their full year, leaving them
-# without a derived Q4. This keeps a year of margin.
+# 2024 is the floor: any tighter and some filers lose a full year, and with it
+# their derived Q4.
 FIRST_YEAR = 2023
 
 WANTED_FORMS = frozenset({'10-K', '10-Q'})
@@ -53,7 +53,8 @@ REQUEST_INTERVAL_SEC = 0.15
 
 
 def trim(company: dict, tags: frozenset) -> dict:
-    """Keep the schema's tags over recent periods; drop SEC's prose and the rest."""
+    """One company cut to what the tests read: the schema's tags over recent
+    periods, without SEC's labels and descriptions."""
     facts = {}
     for taxonomy, taxonomy_tags in company.get('facts', {}).items():
         for tag, body in taxonomy_tags.items():

@@ -1,16 +1,22 @@
 """The extraction schema, compiled into a shape the extractor can vectorize.
 
-The JSON describes each datapoint as an ordered list of sums, written either as
-a bare tag name or as `{"sum": [...]}` over a list of terms:
+Each datapoint is a list of candidates, tried in order; the first that produces
+a value wins. A candidate is written one of four ways:
 
-    datapoint = first non-null of its sums
-    sum       = total of its terms, each term the first tag the filing reported
+    "Assets"                             read this tag
+    {"tag": "Assets", "multiplier": -1}  read it, then apply modifiers (`Tag`)
+    ["Assets", "AssetsNet"]              read the first of these the filing has
+    {"sum": ["Assets", "Goodwill"]}      add these together
 
-Every level collapses to a bare tag name when there is no choice to express: a
-one-term sum is written as the tag itself, as is a term with only one tag. A
-tag is spelled out as a dict only when it carries a modifier. So the extractor
-evaluates any datapoint with the same code, over whole columns, while the JSON
-stays as short as what it has to say.
+Anything in a `sum` can itself be written any of the first three ways, so a
+total can be built from tags filers disagree about:
+
+    {"sum": [["Assets", "AssetsNet"], "Goodwill"]}
+
+Order matters in a list of alternatives - put the most specific tag first.
+
+Watch the position of a list: alone it picks one tag, inside a `sum` it lists
+what to add.
 
 Compiling also answers once which tags the schema can reference - the set the
 reader filters the archive down to, ~150 against a median of ~270 us-gaap tags
@@ -42,11 +48,11 @@ class Sum:
     """Terms added together to produce one candidate value.
 
     Args:
-        terms: added. Each is a tuple of `Tag`s tried in order, the first the
-            filing reported winning. One term of one tag is the bare-tag case.
-        require_all_terms: fail the whole sum where any term matched nothing,
-            which keeps a total like `total_liabilities` off a row where only
-            one half was found. Otherwise a missing term counts as zero.
+        terms: what to add. Each is a tuple of `Tag`s tried in order, the
+            first one the filing reported winning.
+        require_all_terms: fail the sum where a term matched nothing, rather
+            than counting it as zero. Keeps a total like `total_liabilities`
+            off a row where only one half was found.
     """
 
     terms: tuple
@@ -67,8 +73,7 @@ class StatementSchema:
             dependency order - `total_liabilities` reads a column that
             `total_non_current_liabilities` writes, so order is load-bearing.
         overrides: cik -> datapoint -> sums, with the shared ones already
-            appended as a fallback. Keyed by CIK, which survives the ticker
-            changes and delistings that would break a ticker key.
+            appended as a fallback.
     """
 
     name: str
@@ -157,14 +162,14 @@ def _compile_statement(
 
 
 def _compile_datapoint(entries: list) -> tuple:
-    """The sums one datapoint's JSON entries compile to, in order."""
+    """One datapoint's JSON entries as sums, tried in the order written."""
     return tuple(_compile_sum(e) for e in entries)
 
 
 def _compile_sum(spec) -> Sum:
-    """One JSON entry as a sum of terms.
+    """One candidate as a sum of terms.
 
-    `{"sum": [...]}` carries a list of terms; anything else is a single term.
+    `{"sum": [...]}` lists what to add; anything else is a sum of one term.
     """
     if isinstance(spec, dict) and 'sum' in spec:
         terms = spec['sum']
@@ -179,14 +184,15 @@ def _compile_sum(spec) -> Sum:
 
 
 def _compile_term(spec) -> tuple:
-    """One term: the tags to try, or a single tag where there is no choice."""
+    """The tags one term may read, tried in order. A list gives the choices;
+    anything else is a single tag."""
     if isinstance(spec, list):
         return tuple(_compile_tag(t) for t in spec)
     return (_compile_tag(spec),)
 
 
 def _compile_tag(spec) -> Tag:
-    """One tag, as a bare name or as a dict carrying its modifiers."""
+    """One tag: a bare name, or a dict naming it under `tag` with modifiers."""
     if isinstance(spec, str):
         spec = {'tag': spec}
 

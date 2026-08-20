@@ -1,8 +1,8 @@
 """Smoke tests for the SEC fundamental collector.
 
-Runs the pipeline end to end over `companyfacts_fixture.zip`, a dozen real
-filers packed the way SEC ships the 1.4 GB archive.
-`build_companyfacts_fixture.py` rebuilds it.
+Runs the pipeline end to end over `companyfacts_fixture.zip`: a dozen real
+filers, packed the way SEC ships the 1.4 GB archive and trimmed to the years
+the tests read. `build_companyfacts_fixture.py` rebuilds it.
 """
 
 import json
@@ -27,7 +27,7 @@ COMPANYFACTS_FIXTURE = Path(__file__).parent / 'companyfacts_fixture.zip'
 
 USER_AGENT = 'forecastos smoke-test@example.com'
 
-# The universe, read off the fixture that defines it.
+# The universe, read off the fixture rather than restated here.
 with zipfile.ZipFile(COMPANYFACTS_FIXTURE) as _archive:
     CIKS = {name[3:-5] for name in _archive.namelist()
             if name.endswith('.json')}
@@ -35,8 +35,8 @@ with zipfile.ZipFile(COMPANYFACTS_FIXTURE) as _archive:
 
 @pytest.fixture(scope='module')
 def data_dir(tmp_path_factory):
-    """The fixture under the collector's filename - the downloader reuses it
-    instead of downloading."""
+    """The fixture, named so the downloader finds it already there and skips
+    the 1.4 GB download."""
     path = tmp_path_factory.mktemp('sec')
     shutil.copy(COMPANYFACTS_FIXTURE, path / ARCHIVE_FILENAME)
     return str(path)
@@ -57,7 +57,7 @@ def test_sec_company_facts_zip_still_exists():
     resp.raise_for_status()
 
     assert resp.headers['content-type'] == 'application/zip'
-    # an error page served as a 200 gets past `raise_for_status`
+    # an error page served as a 200 would get past `raise_for_status`
     assert int(resp.headers['content-length']) > 1_000_000_000
 
 
@@ -79,8 +79,9 @@ def test_schema_compiles():
 
 
 def test_read_facts_keeps_only_annual_and_quarterly_reports(tmp_path):
-    """Written out rather than taken from the fixture: no operating company
-    files an N-CSR, the fund form this filter exists to exclude."""
+    """Written out rather than taken from the fixture, which cannot cover this:
+    no operating company files an N-CSR, the fund form the filter is really for.
+    """
     facts = [{'form': form, 'end': '2024-12-31', 'val': 1, 'accn': 'a',
               'fy': 2024, 'fp': 'FY', 'filed': '2025-01-01'}
              for form in ('10-K', '10-Q', '10-K/A', '8-K', 'N-CSR', '10-D')]
@@ -116,7 +117,9 @@ def test_get_df_output(collected):
 
 
 def test_get_df_implies_quarterly_cash_flow(collected):
-    """Cash flow is filed year-to-date, so Q2 and Q3 need the quarter implied."""
+    """Cash flow is filed year to date, so Q2 and Q3 have the quarter implied.
+    Unrepaired they are six and nine months long, and the period filter drops
+    them."""
     latest = collected[collected['is_latest']]
 
     for fp in ('Q1', 'Q2', 'Q3'):
