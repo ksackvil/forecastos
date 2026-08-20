@@ -1,9 +1,9 @@
 """Turning reported facts into datapoint columns.
 
 Facts arrive one per row. Pivoting them gives a row per filing-period with a
-column per tag - the shape datapoints are defined over - so every datapoint is
-numpy over whole columns rather than a Python call per row per datapoint, which
-with ~45 datapoints over millions of rows dominated everything else.
+column per tag - the shape datapoints are defined over - so a datapoint is
+numpy over whole columns rather than a Python call per row. Across ~45
+datapoints and millions of rows, that difference dominated the pipeline.
 
 The tag columns live only between the pivot and the evaluation; nothing
 downstream reads them.
@@ -99,7 +99,7 @@ def _datapoint_values(frame: pd.DataFrame, sums) -> np.ndarray:
 
 
 def _sum_values(frame: pd.DataFrame, sum_) -> np.ndarray:
-    """Total of the sum's terms, or null where the total cannot stand."""
+    """Total of the sum's terms, or null where there is no total to give."""
     terms = np.vstack([_term_values(frame, t) for t in sum_.terms])
 
     if sum_.require_all_terms:
@@ -118,8 +118,8 @@ def _term_values(frame: pd.DataFrame, tags) -> np.ndarray:
         if tag.name in frame.columns:
             col = frame[tag.name].to_numpy(dtype='float64') * tag.multiplier
         else:
-            # A company never using this tag is ordinary - that is what the
-            # next tag in the group is for.
+            # A company that never uses this tag is normal - that is what
+            # the next one in the list is for.
             col = np.full(len(frame), np.nan)
 
         if tag.default is not None:

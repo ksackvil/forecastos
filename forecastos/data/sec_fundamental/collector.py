@@ -18,14 +18,6 @@ SCHEMA_DIR = Path(__file__).parent / 'schemas'
 
 
 class SECFundamental:
-    """Income, cash flow and balance sheet figures for every SEC XBRL filer.
-
-    Keyed by CIK and by two dates: the period covered, and the filing it
-    arrived in. Never by ticker - tickers move between share classes, get
-    reused after a delisting, and are blanked on takeover, so they would
-    mis-key exactly the companies that make a backtest honest.
-    """
-
     @classmethod
     def get_df(
         cls,
@@ -36,7 +28,7 @@ class SECFundamental:
     ) -> pd.DataFrame:
         """Fundamental statements, one row per company per period per filing.
 
-        Downloads the 1.2 GB archive, so the whole thing takes a few minutes.
+        Downloads the 1.4 GB archive, so the whole thing takes a few minutes.
         To go wider, shard `ciks` across separate jobs - every stage shards
         cleanly by company.
 
@@ -82,10 +74,10 @@ class SECFundamental:
         data_dir: str = None,
         cleanup: bool = True,
     ) -> dict:
-        """The statements `get_df` merges, before they are joined.
+        """Each statement on its own, before `get_df` merges them.
 
-        Useful for one statement on its own, or to see figures the merge drops
-        - a balance sheet whose period has no income statement has no row to
+        Useful for one statement alone, or to see figures the merge drops - a
+        balance sheet whose period has no income statement has nothing to
         attach to.
 
         Args:

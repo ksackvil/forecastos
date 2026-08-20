@@ -24,7 +24,7 @@ ADJACENCY_TOLERANCE = pd.Timedelta(days=30)
 PERIOD_TOLERANCE = 1.0
 
 # What makes a reported figure distinct. Income and cash flow describe the same
-# period, so they also join on all of it.
+# period, so they join on all of them.
 PERIOD_KEYS = ['cik', 'fy', 'fp', 'form',
                'accn', 'start', 'end', 'period', 'filed']
 
@@ -85,9 +85,9 @@ def adjacent(df: pd.DataFrame, months: int, value_cols: list) -> pd.DataFrame:
 def _match_positions(df: pd.DataFrame, months: int) -> np.ndarray:
     """Row offset of each row's counterpart `months` back, or -1 if there is none.
 
-    Period end and filing date both have to line up: the end matches either
-    way, and only the filing date separates the prior quarter's own filing from
-    that quarter carried as a comparative in a later one.
+    Both dates have to line up. The period end alone is ambiguous: a quarter
+    appears in its own filing and again as a comparative in later ones, and
+    only the filing date tells those apart.
 
     Neither date is unique alone, so candidates come from bucketing period ends
     into tolerance-wide bins and joining a row against the three bins its

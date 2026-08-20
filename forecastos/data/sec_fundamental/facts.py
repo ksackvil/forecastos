@@ -137,7 +137,7 @@ def _to_facts(company: dict, tags: frozenset, member_cik: str) -> pd.DataFrame:
 
     # reindex, not a column select: `start` and `frame` are absent from most
     # records and can be missing from a company entirely, and the shape should
-    # not depend on who was asked for.
+    # not depend on which company was asked for.
     return df.reindex(columns=FACT_COLS)
 
 
